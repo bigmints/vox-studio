@@ -1,0 +1,6 @@
+DEPLOYED AND VERIFIED 2026-11-04.
+VoiceStudio 0.5.7 running at https://gx10-54fa.tail5903e7.ts.net:9444
+Dashboard Apps > Speech entry online; lifecycle controls verified.
+OmniVoice selected, CUDA:0 FP16 on GB10; 4.66 seconds speech generated in 1.49 seconds over HTTPS.
+Other inference models stopped at user request; do not restore automatically.
+See deployment-notes.txt and results/gpu-test.json.

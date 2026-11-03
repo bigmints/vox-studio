@@ -1,0 +1,11 @@
+{
+  "group": "Speech",
+  "service": {
+    "id": "voicestudio",
+    "name": "VoiceStudio",
+    "icon": "🎙️",
+    "port": 3900,
+    "url": "https://gx10-54fa.tail5903e7.ts.net:9444",
+    "description": "Local voice cloning, speech generation, and an OpenAI-compatible TTS API."
+  }
+}

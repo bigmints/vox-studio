@@ -1,0 +1,27 @@
+services:
+  voicestudio:
+    image: ghcr.io/debpalash/voicestudio@sha256:328e7917fc7d0efb0e1edcc098bbffe345d4f34da3fcb3b06be4203d8d3d18d1
+    platform: linux/arm64
+    container_name: voicestudio
+    restart: always
+    ports:
+      - "127.0.0.1:3900:3900"
+      - "100.77.38.96:3900:3900"
+    environment:
+      OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:?Set a private API key in the deployment .env file}
+      OMNIVOICE_DATA_DIR: /app/omnivoice_data
+      HF_HOME: /models/huggingface
+      OMNIVOICE_ANALYTICS_DISABLED: "1"
+      TORCH_COMPILE_DISABLE: "1"
+      OMNIVOICE_ASR_BACKEND: pytorch-whisper
+      OMNIVOICE_PYTORCH_ASR_MODEL: openai/whisper-large-v3
+    volumes:
+      - /home/bigmints/services/voicestudio/data:/app/omnivoice_data
+      - /home/bigmints/llms/speech/voicestudio:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

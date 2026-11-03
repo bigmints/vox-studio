@@ -1,0 +1,53 @@
+--- a/control-panel/server.js
++++ b/control-panel/server.js
+@@ -17,7 +17,7 @@
+   memoryStopInProgress = true;
+   try {
+     const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+-    const candidates = ['vllm-nemotron35-bolt-74b', 'sglang-qwen38-27b'];
++    const candidates = ['voicestudio', 'vllm-nemotron35-bolt-74b', 'sglang-qwen38-27b'];
+     if (!memoryAction(meminfo, require('os'), candidates, candidates)) return;
+     const { stdout } = await execAsync('docker ps --format "{{.Names}}"');
+     const action = memoryAction(meminfo, require('os'), stdout.trim().split('\n'), candidates);
+@@ -480,6 +480,7 @@
+ //  Static services
+ // ─────────────────────────────────────────────────────────────────────────────
+ const SERVICES = [
++  { group: "Speech", services: [{ id: "voicestudio", name: "VoiceStudio", icon: "🎙️", port: 3900, url: "https://gx10-54fa.tail5903e7.ts.net:9444", description: "Local voice cloning and speech generation with an OpenAI-compatible API." }] },
+   { group: "Image Generation",  services: [{ id: "comfyui",            name: "ComfyUI",      icon: "🧩", port: 8188, url: `http://${HOST_IP}:8188`, description: "Node-based image generation workflows." },
+                                             { id: "fooocus",            name: "Fooocus",      icon: "🎨", port: 7865, url: `http://${HOST_IP}:7865`, description: "Simplified image generation."   },
+                                             { id: "invokeai",           name: "InvokeAI",     icon: "✨", port: 9090, url: `http://${HOST_IP}:9090`, description: "Professional image generation." }] },
+@@ -1410,6 +1411,9 @@
+     }
+ 
+     if (img.type === "ds4") {
++      if (states.voicestudio?.state === "running") {
++        return res.status(409).json({ memoryConflict: true, error: "Stop VoiceStudio before starting DeepSeek; its 110 GB host plan is exclusive." });
++      }
+       const runningSpeech = SPEECH_MODELS.filter((model) => states[model.containerName]?.state === "running");
+       if (runningSpeech.length) {
+         return res.status(409).json({
+@@ -1678,6 +1682,23 @@
+ });
+ 
+ // ── Generic service controls ──────────────────────────────────────────────────
++// VoiceStudio shares the GB10 unified-memory pool with managed models.
++for (const action of ['start', 'restart']) {
++  app.post(`/api/${action}/voicestudio`, serializeStartup(async (req, res) => {
++    try {
++      const states = await getContainerStates();
++      const solo = VLLM_MODELS.find(model => model.soloModel && states[model.containerName]?.state === 'running');
++      if (solo) return res.status(409).json({ error: `Stop ${solo.displayName} before starting VoiceStudio.`, memoryConflict: true });
++      const host = memorySnapshot(fs.readFileSync('/proc/meminfo', 'utf8'), require('os'));
++      if (host.ramUsedBytes / 1e9 + 12 > 102) {
++        return res.status(409).json({ error: 'Free at least 12 GB within the host memory budget before starting VoiceStudio.', memoryConflict: true });
++      }
++      await execAsync(`docker ${action} voicestudio`);
++      res.json({ ok: true });
++    } catch (error) { res.status(500).json({ error: error.message }); }
++  }));
++}
++
+ function serviceTargets(id) {
+   if (id === "deepseek-harness") return "deepseek-harness deepseek-harness-proxy";
+   return id;

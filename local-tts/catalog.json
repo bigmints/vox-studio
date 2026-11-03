@@ -1,0 +1,54 @@
+{
+  "qwen3": {
+    "name": "Qwen3 \u00b7 Fast clone (0.6B \u00b7 4-bit)",
+    "repo": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit",
+    "revision": "0d6bb6fe33f92d47a507e23b9148940e8366ab5b",
+    "languages": {
+      "en": "English",
+      "zh": "Chinese",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "de": "German",
+      "fr": "French",
+      "ru": "Russian",
+      "pt": "Portuguese",
+      "es": "Spanish",
+      "it": "Italian"
+    }
+  },
+  "kokoro": {
+    "name": "Kokoro \u00b7 Preset voices",
+    "repo": "mlx-community/Kokoro-82M-bf16",
+    "revision": "a71e4d38b236d968966a2002c4c895dbd12b1c3c",
+    "languages": {
+      "en": "English"
+    },
+    "voices": {
+      "af_heart": "Heart \u00b7 American English",
+      "af_bella": "Bella \u00b7 American English",
+      "af_nicole": "Nicole \u00b7 American English",
+      "af_sarah": "Sarah \u00b7 American English",
+      "am_adam": "Adam \u00b7 American English",
+      "am_michael": "Michael \u00b7 American English",
+      "bf_emma": "Emma \u00b7 British English",
+      "bm_george": "George \u00b7 British English"
+    }
+  },
+  "qwen3-hq": {
+    "name": "Qwen3 \u00b7 Quality clone (1.7B \u00b7 8-bit)",
+    "repo": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit",
+    "revision": "e7dd0585652209fa0d7783659aad4e8a324de11c",
+    "languages": {
+      "en": "English",
+      "zh": "Chinese",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "de": "German",
+      "fr": "French",
+      "ru": "Russian",
+      "pt": "Portuguese",
+      "es": "Spanish",
+      "it": "Italian"
+    }
+  }
+}

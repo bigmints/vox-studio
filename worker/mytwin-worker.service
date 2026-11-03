@@ -1,0 +1,22 @@
+[Unit]
+Description=MyTwin InfiniteTalk worker API
+BindsTo=infinitetalk.service
+PartOf=infinitetalk.service
+After=infinitetalk.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/bigmints/apps/InfiniteTalk
+ExecStart=/home/bigmints/apps/InfiniteTalk/.venv/bin/python /home/bigmints/apps/InfiniteTalk/infinitetalk_worker.py
+Environment=PYTHONUNBUFFERED=1
+Environment=MYTWIN_WORKER_HOST=100.77.38.96
+Environment=MYTWIN_WORKER_PORT=8420
+UMask=0077
+MemoryHigh=96G
+MemoryMax=104G
+MemorySwapMax=0
+TasksMax=512
+KillMode=control-group
+TimeoutStopSec=35
+Restart=on-failure
+RestartSec=5

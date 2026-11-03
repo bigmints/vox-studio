@@ -1,0 +1,26 @@
+[package]
+name = "mytwin"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+rfd = "0.16"
+mime_guess = "2"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

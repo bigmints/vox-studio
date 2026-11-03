@@ -1,0 +1,27 @@
+data/
+.env
+node_modules/
+
+src-tauri/target/
+src-tauri/gen/
+linly-models/
+
+__pycache__/
+
+local-tts/uv
+local-tts/.venv/
+
+# Downloaded runtimes, models, and third-party checkout
+.python/
+.venv*/
+Linly-Talker/
+
+# Deployment snapshots and generated test media
+deploy/voicestudio/live/
+deploy/voicestudio/results/
+*.orig
+*.rej
+.DS_Store
+secrets.json
+.env.*
+!.env.example

@@ -1,0 +1,39 @@
+
+## VoiceStudio (2026-11-04)
+
+- Dashboard: Apps > Speech > VoiceStudio (start, stop, restart, logs, open).
+- Private UI: https://gx10-54fa.tail5903e7.ts.net:9444/
+- OpenAI-compatible base URL: https://gx10-54fa.tail5903e7.ts.net:9444/v1
+- Container: `voicestudio`; service directory: `/home/bigmints/services/voicestudio`.
+- Native ARM64 CUDA image, version 0.5.7; pinned digest
+  `sha256:328e7917fc7d0efb0e1edcc098bbffe345d4f34da3fcb3b06be4203d8d3d18d1`.
+- Compose uses restart always; port 3900 binds only loopback and Tailscale.
+  Tailscale Serve provides private HTTPS on 9444; no Funnel exposure.
+- Data persists in the service directory; Hugging Face models in
+  `/home/bigmints/llms/speech/voicestudio/huggingface`.
+- API key: private `.env` in the service directory, mode 0600. Do not commit
+  or log it. Send as Bearer authentication; the browser asks for this key.
+- OmniVoice is installed, selected, and verified on CUDA:0 / NVIDIA GB10 in
+  FP16. A warm authenticated HTTPS request generated 4.66 seconds of 24 kHz
+  mono WAV in 1.49 seconds. Cold load after recreation took 11.58 seconds.
+  These are short-sample timings, not general performance guarantees.
+- KittenTTS is also installed as a CPU alternative; its HTTPS sample generated
+  7.59 seconds of speech in 2.58 seconds.
+- TORCH_COMPILE_DISABLE=1 persists in Compose: bundled Triton ptxas cannot
+  compile sm_121a. Ordinary CUDA inference works; no CPU fallback was used.
+  OMNIVOICE_ASR_BACKEND=pytorch-whisper avoids unsupported CTranslate2/cuDNN8.
+- The user accepted OmniVoice terms for non-commercial testing and separately
+  acknowledged the tokenizer's unspecified upstream licence. These receipts
+  persist in application data; they do not establish commercial-use rights.
+- Dashboard admission reserves 12 GB below the 102 GB startup threshold,
+  disallows co-residency with exclusive DeepSeek, and stops VoiceStudio first
+  at the existing 106 GB whole-host watchdog threshold. Docker RSS alone does
+  not cap GB10 CUDA allocations. Eight memory/telemetry tests passed.
+- Other running language/image model containers were stopped at user request.
+  Dashboard and unrelated infrastructure remain up. No models were restored.
+- Live dashboard backup: `~/control-panel/backups/voicestudio-20261104`.
+  Local source was updated using only the VoiceStudio patch; concurrent
+  removal of InfiniteTalk was preserved.
+
+Test command on GX10 (reads the private key without printing it):
+`python3 ~/services/voicestudio/check_api.py /v1/audio/speech --body '{"model":"omnivoice","voice":"default","input":"Hello from GX10.","response_format":"wav"}' --output /tmp/speech.wav`
