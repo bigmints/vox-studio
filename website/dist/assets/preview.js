@@ -95,13 +95,13 @@
       let startChar=Math.floor(clip.text.length*fraction);
       if(startChar>0) {const space=clip.text.indexOf(' ',startChar);startChar=space<0?0:space+1;}
       position=Math.max(position,clip.start); selected=clip.id;render();
-      if(!clip.text.trim()||speaker.muted||speaker.volume===0) {
+      if(!clip.text.trim()) {
         timer=setTimeout(()=>{if(run!==token)return;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);}, Math.max(0,clip.duration-offset)*1000);return;
       }
       const recording=sampleFor(clip);
       if(!recording){stop();status('This edited script needs a new voice take. Generate it in Fikr Vox, or choose New to hear the prepared samples.');return;}
       const audio=new Audio(recording.url);activeAudio=audio;
-      audio.playbackRate=speed;audio.volume=speaker.volume;
+      audio.playbackRate=speed;audio.volume=speaker.muted?0:speaker.volume;
       audio.onloadedmetadata=()=>{if(run===token)audio.currentTime=Math.min(offset*speed,Math.max(0,audio.duration-.01));};
       audio.ontimeupdate=()=>{if(run!==token)return;position=clip.start+audio.currentTime/speed;updatePosition();};
       audio.onended=()=>{if(run!==token)return;activeAudio=null;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);};
@@ -128,7 +128,7 @@
     else if(b.hasAttribute('data-add')) {if(turns.length>=8)return;stop();const turn={id:nextId++,speaker:current().speaker==='host'?'guest':'host',text:''};turns.push(turn);selected=turn.id;pane='script';render();$('#demo-script').focus();status('New turn added. Write its script in the editor.');}
     else if(b.hasAttribute('data-duplicate')) {if(turns.length>=8)return;stop();const copy={...current(),id:nextId++};turns.splice(turns.indexOf(current())+1,0,copy);selected=copy.id;render();status('Turn duplicated.');}
     else if(b.hasAttribute('data-delete')) {if(turns.length===1)return;stop(true);const i=turns.indexOf(current());turns.splice(i,1);selected=turns[Math.min(i,turns.length-1)].id;render();status('Turn deleted.');}
-    else if(b.dataset.mute) {stop();const s=speakers[b.dataset.mute];s.muted=!s.muted;renderTracks();status(`${s.name} ${s.muted?'muted':'unmuted'}.`);}
+    else if(b.dataset.mute) {const s=speakers[b.dataset.mute];s.muted=!s.muted;if(activeAudio&&current().speaker===b.dataset.mute)activeAudio.volume=s.muted?0:s.volume;renderTracks();status(`${s.name} ${s.muted?'muted':'unmuted'}.`);}
   });
   $('#demo-script').addEventListener('input',()=>{stop();current().text=$('#demo-script').value;status(sampleFor(current())?'Prepared neural voice sample ready.':'Edited script: generate a new voice take in Fikr Vox. Choose New to restore the audio samples.');renderTurns();renderTracks();$('[data-words]').textContent=`${wordCount(current().text)} words · ~${duration(current()).toFixed(1)} sec`;});
   $('#demo-speaker').addEventListener('change',()=>{stop();current().speaker=$('#demo-speaker').value;render();status('Speaker and timeline track updated.');});
@@ -136,7 +136,7 @@
   $('[data-pacing]').addEventListener('change',()=>{stop(true);gap=Number($('[data-pacing]').value);renderTracks();status('Conversation gaps updated.');});
   $('[data-speed]').addEventListener('change',()=>{stop(true);speed=Number($('[data-speed]').value);renderTracks();renderEditor();status('Playback speed updated.');});
   $('#demo-seek').addEventListener('input',()=>{const value=Number($('#demo-seek').value);stop();position=value;updatePosition();});
-  root.addEventListener('input',event=>{if(event.target.dataset.volume){stop();speakers[event.target.dataset.volume].volume=Number(event.target.value);}});
+  root.addEventListener('input',event=>{if(event.target.dataset.volume){const key=event.target.dataset.volume;const speaker=speakers[key];speaker.volume=Number(event.target.value);if(activeAudio&&current().speaker===key)activeAudio.volume=speaker.muted?0:speaker.volume;}});
   root.querySelector('[role=tablist]').addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setPane(event.key==='Home'?'script':event.key==='End'?'voice':pane==='script'?'voice':'script');$(`[data-pane="${pane}"]`).focus();}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing){stop();status('Playback paused while this tab is hidden.');}});
   window.addEventListener('pagehide',()=>stop());

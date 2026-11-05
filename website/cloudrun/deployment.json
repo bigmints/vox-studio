@@ -3,10 +3,10 @@
   "project": "fikr-apps",
   "region": "us-central1",
   "service": "ssrfikrapps",
-  "revision": "ssrfikrapps-00085-yav",
-  "previousRevision": "ssrfikrapps-00083-xeq",
-  "baseImage": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:e79bd9414e55bfc5c9d87b4f9d61af7c96948f21cc70f223ea5baeef14497f42",
-  "image": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:a38daa0eb91dd43c7858d815e0816d73c710e547c694a3b5604b656301b20a0b",
-  "build": "d75f59b1-2c6f-4a6c-9c4b-540efe6ac5ef",
+  "revision": "ssrfikrapps-00087-ruh",
+  "previousRevision": "ssrfikrapps-00085-yav",
+  "baseImage": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps:fikr-family-20261106",
+  "image": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:3a3fb993ac4eaff3783cd642767643b1c4739540114532b07e02cd453bb90cd3",
+  "build": "7095b040-b2ea-4b5f-82b7-2d305d6948a3",
   "marketingSource": "website/main"
 }
