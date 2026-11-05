@@ -41,7 +41,7 @@ The earlier `scripts/deploy-fikr-hosting.py` helper is retained for Firebase-hos
 The verified live deployment is recorded in `cloudrun/deployment.json`. Rollback, if needed:
 
 ```sh
-gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00089-zev=100
+gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00091-jut=100
 ```
 
 ## Unified Fikr marketing site
