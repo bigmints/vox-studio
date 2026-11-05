@@ -20,15 +20,26 @@ No packaged release existed when this site was created. Download CTAs currently 
 
 ## fikr.one/vox hosting
 
-The canonical site is https://fikr.one/vox/. GitHub Pages remains an interim mirror.
+The canonical site is https://fikr.one/vox/. GitHub Pages remains a mirror.
 
-The main domain uses Firebase Hosting in front of the existing Fikr application. The deployment helper reads the current live file manifest and configuration, replaces only `/vox/`, preserves unrelated files and backend routing, and refuses to release if another deployment intervenes.
+DNS and live configuration confirm that fikr.one points directly to Cloud Run service `ssrfikrapps` in project `fikr-apps`, region `us-central1`. The Firebase Hosting site has no custom domains, so publishing there does not update fikr.one.
 
-Once the configured `fikr-deploy` account has Hosting access, discover and verify the Hosting site ID for `fikr.one`, then run:
+`cloudrun/vox-entry.cjs` serves only `/vox` and `/vox/**`. All other HTTP requests and WebSocket upgrades are forwarded to the existing Next.js application, with request methods, bodies, cookies, and authorization headers preserved. Audio supports byte ranges for seeking. The existing app runs on internal port 8081; the route layer listens on the Cloud Run ingress port.
+
+The deployment image derives from the exact immutable image already deployed, without rebuilding the main application or including unrelated local source changes. `cloudrun/Dockerfile` is built from the `website` context with a verified `FIKR_BASE_IMAGE` build argument. Use the configured `fikr-deploy` identity for builds and releases.
+
+Verification:
 
 ```sh
-python3 website/scripts/deploy-fikr-hosting.py --site VERIFIED_SITE_ID
-python3 website/scripts/deploy-fikr-hosting.py --site VERIFIED_SITE_ID --publish
+node --test website/cloudrun/vox-entry.test.cjs
 ```
 
-The first command is read-only. No Hosting deployment has been completed: the configured deployment identity currently receives `403 PERMISSION_DENIED` from Firebase Hosting. The helper has syntax validation but remains unverified against the live Hosting API until that access is granted.
+Deploy a no-traffic revision first, verify `/vox/`, `/vox/docs/`, audio byte ranges, and the existing homepage/API behavior, then move traffic to the verified revision. Keep the previous revision available for rollback.
+
+The earlier `scripts/deploy-fikr-hosting.py` helper is retained for Firebase-hosted domains. It checks the domain association before changing a release and refuses to deploy this domain because it is not bound to Firebase Hosting.
+
+The verified live deployment is recorded in `cloudrun/deployment.json`. Rollback, if needed:
+
+```sh
+gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00075-hzl=100
+```

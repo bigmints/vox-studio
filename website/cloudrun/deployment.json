@@ -1,0 +1,11 @@
+{
+  "url": "https://fikr.one/vox/",
+  "project": "fikr-apps",
+  "region": "us-central1",
+  "service": "ssrfikrapps",
+  "revision": "ssrfikrapps-00083-xeq",
+  "previousRevision": "ssrfikrapps-00075-hzl",
+  "baseImage": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:b825fcaba5ffc912c1a8570a893ac1a7ce47d1f1425655aa95feebab8d177cea",
+  "image": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:e79bd9414e55bfc5c9d87b4f9d61af7c96948f21cc70f223ea5baeef14497f42",
+  "build": "f95ee5c1-7639-4136-969a-db7f82ccc5bd"
+}

@@ -42,7 +42,7 @@ def pages(path, key):
 
 site = 'sites/' + args.site
 # Verify this is the intended domain before preparing a mutation.
-domains = pages(site + '/customDomains?pageSize=1000', 'customDomains')
+domains = pages('projects/fikr-apps/' + site + '/customDomains?pageSize=1000', 'customDomains')
 if not any(d['name'].split('/')[-1] in ('fikr.one', 'www.fikr.one') for d in domains):
     raise SystemExit('Selected site does not contain the verified fikr.one custom domain.')
 release = call('GET', site + '/releases?pageSize=1')['releases'][0]
