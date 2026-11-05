@@ -41,7 +41,7 @@ The earlier `scripts/deploy-fikr-hosting.py` helper is retained for Firebase-hos
 The verified live deployment is recorded in `cloudrun/deployment.json`. Rollback, if needed:
 
 ```sh
-gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00087-ruh=100
+gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00089-zev=100
 ```
 
 ## Unified Fikr marketing site
@@ -59,3 +59,5 @@ node website/scripts/preview-main.cjs
 Open http://127.0.0.1:4322/. In this preview only, backend routes redirect to the live site. Development source and build assets for the original Fikr site were backed up locally before editing; private snapshots are intentionally excluded from Git.
 
 The main Fikr source also contains synchronized public/fikr-marketing, public/main-assets, and public/vox files, with targeted Next.js beforeFiles rewrites and public-static-path allowances, so its future standard source deployments retain this design. Existing uncommitted application source was preserved.
+
+The four homepage story backgrounds are original monochrome SVG patterns in main/assets/story-*.svg, selected by the story tab and displayed full bleed with a legibility overlay.
