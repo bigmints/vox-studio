@@ -41,12 +41,12 @@ The earlier `scripts/deploy-fikr-hosting.py` helper is retained for Firebase-hos
 The verified live deployment is recorded in `cloudrun/deployment.json`. Rollback, if needed:
 
 ```sh
-gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00085-yav=100
+gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00087-ruh=100
 ```
 
 ## Unified Fikr marketing site
 
-`main/` contains the redesigned Fikr homepage, Go/Studio/Cowork product pages, and legal-page presentation. The main navigation and footer are shared in the rendered Vox pages as well. The homepage product tabs include the interactive Vox demo; its audio URLs resolve from its script path so it plays from either homepage or product page.
+`main/` contains the redesigned Fikr homepage, Go/Studio/Cowork product pages, and legal-page presentation. The main navigation and footer are shared in the rendered Vox pages as well. The homepage showcase is reserved for four short idea stories. Product previews and the interactive Vox studio live on their product pages. Vox audio URLs resolve from its script path.
 
 The route layer serves the exact marketing routes and `/main-assets/`, while `/login`, `/register`, `/subscribe`, `/dashboard`, `/api/**`, and all other app routes continue to reach the existing Next.js application. Pricing values, app-store links, contact address, and legal wording were retained from the original published site.
 
