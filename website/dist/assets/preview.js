@@ -2,12 +2,12 @@
   const root = document.getElementById('studio-preview');
   if (!root) return;
   const initial = () => [
-    { id: 1, speaker: 'host', text: 'Welcome to MyTwin. Today, we’re turning a simple conversation into a podcast.' },
+    { id: 1, speaker: 'host', text: 'Welcome to Fikr Vox. Today, we’re turning a simple conversation into a podcast.' },
     { id: 2, speaker: 'guest', text: 'And each speaker gets a voice, a track, and a little personality. What will you create?' }
   ];
   let turns = initial(), selected = 1, nextId = 3, position = 0, playing = false, token = 0, timer = null;
   const speakers = {host:{name:'Host', volume:1, muted:false, voice:''},guest:{name:'Guest',volume:1,muted:false,voice:''}};
-  const recordings = {"host": {"url": "assets/audio/host.wav", "duration": 7.025}, "guest": {"url": "assets/audio/guest.wav", "duration": 6.0}, "host-heart": {"url": "assets/audio/host-heart.wav", "duration": 5.9}, "guest-george": {"url": "assets/audio/guest-george.wav", "duration": 7.025}};
+  const recordings = {"host": {"url": "assets/audio/host.wav", "duration": 7.2}, "guest": {"url": "assets/audio/guest.wav", "duration": 6.0}, "host-heart": {"url": "assets/audio/host-heart.wav", "duration": 6.0}, "guest-george": {"url": "assets/audio/guest-george.wav", "duration": 7.025}};
   let activeAudio = null;
   let speed = 1, gap = .35, pane = 'script';
   const icon = path => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
@@ -15,10 +15,10 @@
     <div class="dp-top"><span class="dp-project">My first podcast <span aria-hidden="true">⌄</span></span><button data-reset>New</button><div class="dp-workspace-switch"><span>${icon('M3 10v4m4-8v12m5-15v18m5-15v12m4-8v4')} Audio</span></div><span class="dp-top-note">Interactive preview</span><button data-about aria-label="About this demo">${icon('M4 4h16v16H4zm11 0v16')}</button></div>
     <div class="dp-body"><aside class="dp-rail" aria-label="Demo tools"><div class="dp-rail-mark" aria-hidden="true">${icon('M3 10v4m4-8v12m5-15v18m5-15v12m4-8v4')}</div><button aria-label="Edit episode dialogue" data-focus-editor>${icon('M4 4h16v16H4zm5 0v16m4-11 4 3-4 3z')}</button><button aria-label="Speaker voice settings" data-voices>${icon('M8 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0M4 21v-3a8 8 0 0 1 16 0v3')}</button><button aria-label="About this interactive demo" data-about>${icon('M12 8v1m0 3v5M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20')}</button></aside>
     <div class="dp-main"><div class="dp-tools"><div class="dp-characters"><span><b>1</b>Host <small>My voice</small></span><span><b>2</b>Guest <small>Guest voice</small></span></div><div class="dp-tools-right"><button data-voices>Speakers &amp; voices</button><label><span>Timing</span><select data-pacing aria-label="Demo conversation timing"><option value=".15">Quick exchange</option><option value=".35" selected>Natural conversation</option><option value=".8">Relaxed conversation</option></select></label></div></div>
-    <div class="dp-modal" data-about-panel hidden><h3>Try the MyTwin workflow</h3><p>Edit dialogue, assign speakers, reorder turns, and explore the timeline. Playback uses prepared Kokoro neural voice recordings from MyTwin. Edited scripts need a new voice take in the desktop app. This demo stays on this page; it does not create projects in the desktop app.</p><button data-about-close>Back to the studio</button></div>
+    <div class="dp-modal" data-about-panel hidden><h3>Try the Fikr Vox workflow</h3><p>Edit dialogue, assign speakers, reorder turns, and explore the timeline. Playback uses prepared Kokoro neural voice recordings from Fikr Vox. Edited scripts need a new voice take in the desktop app. This demo stays on this page; it does not create projects in the desktop app.</p><button data-about-close>Back to the studio</button></div>
     <div class="dp-status" data-status role="status" aria-live="polite">Try it: select a turn, edit the script, then press play.</div>
     <div class="dp-workspace"><section class="dp-dialogue" aria-label="Demo episode dialogue"><div class="dp-heading"><h3>Episode dialogue</h3><span class="dp-count" data-count></span></div><p class="dp-hint">Edit the dialogue, listen to the conversation, then adjust the timing below.</p><div class="dp-turns" data-turns></div></section>
-    <section class="dp-editor" aria-label="Demo turn editor"><h3 data-editor-title>Host · Turn 1</h3><label for="demo-speaker">Speaking</label><select class="dp-speaker" id="demo-speaker"><option value="host">Host</option><option value="guest">Guest</option></select><div class="dp-tabs" role="tablist" aria-label="Turn settings"><button id="demo-script-tab" role="tab" aria-selected="true" aria-controls="demo-script-panel" data-pane="script">Script</button><button id="demo-voice-tab" role="tab" aria-selected="false" aria-controls="demo-voice-panel" data-pane="voice">Voice</button></div><div id="demo-script-panel" role="tabpanel" aria-labelledby="demo-script-tab"><label for="demo-script">Script</label><textarea id="demo-script" maxlength="800" spellcheck="true"></textarea><span class="dp-word-count" data-words></span></div><div class="dp-voice-pane" id="demo-voice-panel" role="tabpanel" aria-labelledby="demo-voice-tab" hidden><label for="demo-voice">Neural preview voice</label><select id="demo-voice"></select><p>The website uses Kokoro neural voice recordings for this preview. Download MyTwin to use local models, voice cloning, and connected providers.</p><button data-audition>Listen to this turn</button></div></section></div>
+    <section class="dp-editor" aria-label="Demo turn editor"><h3 data-editor-title>Host · Turn 1</h3><label for="demo-speaker">Speaking</label><select class="dp-speaker" id="demo-speaker"><option value="host">Host</option><option value="guest">Guest</option></select><div class="dp-tabs" role="tablist" aria-label="Turn settings"><button id="demo-script-tab" role="tab" aria-selected="true" aria-controls="demo-script-panel" data-pane="script">Script</button><button id="demo-voice-tab" role="tab" aria-selected="false" aria-controls="demo-voice-panel" data-pane="voice">Voice</button></div><div id="demo-script-panel" role="tabpanel" aria-labelledby="demo-script-tab"><label for="demo-script">Script</label><textarea id="demo-script" maxlength="800" spellcheck="true"></textarea><span class="dp-word-count" data-words></span></div><div class="dp-voice-pane" id="demo-voice-panel" role="tabpanel" aria-labelledby="demo-voice-tab" hidden><label for="demo-voice">Neural preview voice</label><select id="demo-voice"></select><p>The website uses Kokoro neural voice recordings for this preview. Download Fikr Vox to use local models, voice cloning, and connected providers.</p><button data-audition>Listen to this turn</button></div></section></div>
     <div class="dp-transport"><button class="dp-play" data-play aria-label="Play conversation">▶</button><button data-stop aria-label="Stop and return to beginning">■</button><span class="dp-time" data-time>0:00 / 0:00</span><label class="dp-speed">Speed <select data-speed aria-label="Demo playback speed"><option value=".75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></label><div class="dp-edit-actions"><button data-duplicate>Duplicate</button><button data-delete>Delete</button><button class="dp-primary" data-add>+ Turn</button></div></div>
     <div class="dp-timeline" aria-label="Demo conversation timeline"><div class="dp-seek-row"><label for="demo-seek">TRACKS</label><input type="range" id="demo-seek" min="0" max="20" value="0" step=".1" aria-label="Seek conversation in seconds"></div><div data-tracks></div></div>
     <div class="dp-foot"><span>Interactive preview · Kokoro neural voice samples</span><a href="docs/#podcasts">Explore the full app ↗</a></div></div></div>`;
@@ -84,7 +84,7 @@
     if(index<0) index=0;
     const stopAt = onlyTurn ? index + 1 : clips.length;
     playing=true; $('[data-play]').textContent='Ⅱ'; $('[data-play]').setAttribute('aria-label','Pause conversation');
-    status('Playing Kokoro neural voice samples from MyTwin.');
+    status('Playing Kokoro neural voice samples from Fikr Vox.');
     function next() {
       if(run!==token) return;
       if(index>=stopAt) {const last=clips[stopAt-1];position=last.start+last.duration;stop();status('Preview finished. Try another voice or explore the dialogue controls.');return;}
@@ -97,7 +97,7 @@
         timer=setTimeout(()=>{if(run!==token)return;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);}, Math.max(0,clip.duration-offset)*1000);return;
       }
       const recording=sampleFor(clip);
-      if(!recording){stop();status('This edited script needs a new voice take. Generate it in MyTwin, or choose New to hear the prepared samples.');return;}
+      if(!recording){stop();status('This edited script needs a new voice take. Generate it in Fikr Vox, or choose New to hear the prepared samples.');return;}
       const audio=new Audio(recording.url);activeAudio=audio;
       audio.playbackRate=speed;audio.volume=speaker.volume;
       audio.onloadedmetadata=()=>{if(run===token)audio.currentTime=Math.min(offset*speed,Math.max(0,audio.duration-.01));};
@@ -128,7 +128,7 @@
     else if(b.hasAttribute('data-delete')) {if(turns.length===1)return;stop(true);const i=turns.indexOf(current());turns.splice(i,1);selected=turns[Math.min(i,turns.length-1)].id;render();status('Turn deleted.');}
     else if(b.dataset.mute) {stop();const s=speakers[b.dataset.mute];s.muted=!s.muted;renderTracks();status(`${s.name} ${s.muted?'muted':'unmuted'}.`);}
   });
-  $('#demo-script').addEventListener('input',()=>{stop();current().text=$('#demo-script').value;status(sampleFor(current())?'Prepared neural voice sample ready.':'Edited script: generate a new voice take in MyTwin. Choose New to restore the audio samples.');renderTurns();renderTracks();$('[data-words]').textContent=`${wordCount(current().text)} words · ~${duration(current()).toFixed(1)} sec`;});
+  $('#demo-script').addEventListener('input',()=>{stop();current().text=$('#demo-script').value;status(sampleFor(current())?'Prepared neural voice sample ready.':'Edited script: generate a new voice take in Fikr Vox. Choose New to restore the audio samples.');renderTurns();renderTracks();$('[data-words]').textContent=`${wordCount(current().text)} words · ~${duration(current()).toFixed(1)} sec`;});
   $('#demo-speaker').addEventListener('change',()=>{stop();current().speaker=$('#demo-speaker').value;render();status('Speaker and timeline track updated.');});
   $('#demo-voice').addEventListener('change',()=>{stop();speakers[current().speaker].voice=$('#demo-voice').value;renderTracks();renderEditor();status('Neural preview voice selected.');});
   $('[data-pacing]').addEventListener('change',()=>{stop(true);gap=Number($('[data-pacing]').value);renderTracks();status('Conversation gaps updated.');});
