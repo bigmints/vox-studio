@@ -1,10 +1,11 @@
+import {pacingTrim} from './audio-pacing.js';
 import {arrangeAudio} from './timeline-model.js';
 import {trimRange} from './timeline-editor.js';
 // PCM is interleaved in timeline order; input samples share the decoder's rate.
 export function timelineWav(parts,sampleRate=48000,tracks){
  if(!parts.length)throw Error('No audio clips to export.');
  const channels=Math.min(2,Math.max(...parts.map(p=>p.channels.length)));
- const layout=arrangeAudio(parts.map((p,i)=>({...p,sec:{id:String(i),trackId:p.trackId,offset:p.offset,trims:{source:p.trim}},take:{outputId:'source'},duration:p.channels[0].length/sampleRate})),tracks);
+ const layout=arrangeAudio(parts.map((p,i)=>({...p,sec:{id:String(i),trackId:p.trackId,offset:p.offset,gapBefore:p.gapBefore,sequenceId:p.sequenceId,trims:{source:p.trim}},take:{outputId:'source'},duration:p.channels[0].length/sampleRate})),tracks);
  const spans=layout.clips.map(p=>({...p,sourceStart:Math.round(p.range.start*sampleRate),sourceEnd:Math.min(p.channels[0].length,Math.round(p.range.end*sampleRate)),targetStart:Math.round(p.start*sampleRate)}));
  const frames=Math.max(...spans.map(p=>p.targetStart+p.sourceEnd-p.sourceStart)),size=frames*channels*2;
  if(size>256*1024*1024)throw Error('This export exceeds 256 MB. Export a shorter production.');
@@ -19,5 +20,5 @@ export function timelineWav(parts,sampleRate=48000,tracks){
 export async function renderTimelineAudio(clips,url,onProgress=()=>{},tracks){
  const missing=clips.filter(c=>!c.take);if(missing.length)throw Error('Add a finished audio take for: '+missing.map(c=>c.sec.title).join(', '));
  const ctx=new AudioContext({sampleRate:48000}),parts=[];let total=0;
- try{for(let i=0;i<clips.length;i++){const c=clips[i];onProgress(i+1,clips.length);const res=await fetch(url(c.take.outputId));if(!res.ok)throw Error('Could not load '+c.sec.title);const decoded=await ctx.decodeAudioData(await res.arrayBuffer());total+=decoded.length*decoded.numberOfChannels*4;if(total>512*1024*1024)throw Error('This production is too large to export in memory.');parts.push({channels:Array.from({length:Math.min(decoded.numberOfChannels,2)},(_,i)=>decoded.getChannelData(i)),trim:c.sec.trims?.[c.take.outputId],trackId:c.sec.trackId,offset:c.sec.offset});}return timelineWav(parts,ctx.sampleRate,tracks);}finally{await ctx.close();}
+ try{for(let i=0;i<clips.length;i++){const c=clips[i];onProgress(i+1,clips.length);const res=await fetch(url(c.take.outputId));if(!res.ok)throw Error('Could not load '+c.sec.title);const decoded=await ctx.decodeAudioData(await res.arrayBuffer());total+=decoded.length*decoded.numberOfChannels*4;if(total>512*1024*1024)throw Error('This production is too large to export in memory.');parts.push({channels:Array.from({length:Math.min(decoded.numberOfChannels,2)},(_,i)=>decoded.getChannelData(i)),trim:pacingTrim(c.sec,c.take.outputId,decoded),gapBefore:c.sec.gapBefore,sequenceId:c.sec.sequenceId,trackId:c.sec.trackId,offset:c.sec.offset});}return timelineWav(parts,ctx.sampleRate,tracks);}finally{await ctx.close();}
 }

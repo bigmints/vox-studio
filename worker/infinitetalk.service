@@ -1,0 +1,12 @@
+[Unit]
+Description=InfiniteTalk idle UI and bounded worker
+Wants=mytwin-worker.service
+Before=mytwin-worker.service
+[Service]
+WorkingDirectory=/home/bigmints/apps/InfiniteTalk
+ExecStart=/usr/bin/python3 /home/bigmints/apps/InfiniteTalk/gx10_status.py
+Restart=no
+MemoryMax=128M
+TasksMax=16
+[Install]
+WantedBy=default.target

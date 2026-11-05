@@ -24,8 +24,15 @@ def validate(request):
         raise ValueError("This local model does not support the selected language.")
     if not isinstance(request.get("text"), str) or not request["text"].strip() or len(request["text"]) > 12000:
         raise ValueError("Use 1–12,000 characters per local voice take.")
-    if engine == "kokoro" and request.get("voice") not in model["voices"]:
-        raise ValueError("Choose a Kokoro preset voice.")
+    if model["mode"] == "preset" and request.get("voice") not in model["voices"]:
+        raise ValueError("Choose a supported preset voice.")
+    if engine == "kokoro" and model["voiceLanguages"][request["voice"]] != request["language"]:
+        raise ValueError("Choose a Kokoro voice matching the selected language.")
+    instruction = request.get("instruct", "")
+    if not isinstance(instruction, str) or len(instruction) > 2000:
+        raise ValueError("Use a voice instruction of at most 2,000 characters.")
+    if model["mode"] == "design" and not instruction.strip():
+        raise ValueError("Describe the voice you want to create.")
     if engine in ("qwen3", "qwen3-hq") and (not request.get("reference") or not request.get("referenceText", "").strip()):
         raise ValueError("Add a voice recording and its exact transcript to your twin.")
     return model
@@ -66,6 +73,28 @@ def delivery_chunks(text):
             yield part, index < len(sentences) - 1 and part_index == len(parts) - 1
 
 
+def kokoro_delivery_chunks(model, text, voice):
+    # Non-English pipelines otherwise silently truncate at 510 phoneme characters.
+    pipeline = model._get_pipeline(voice[0]) if voice[0] not in "ab" else None
+
+    def bounded(part):
+        if pipeline is None or len(pipeline.g2p(part)[0]) <= 500:
+            yield part
+            return
+        if len(part) < 2:
+            raise ValueError("This text cannot fit Kokoro's phoneme limit.")
+        midpoint = len(part) // 2
+        space = part.rfind(" ", 0, midpoint + 1)
+        cut = space if space > midpoint // 2 else midpoint
+        yield from bounded(part[:cut].strip())
+        yield from bounded(part[cut:].strip())
+
+    for segment, pause_after in delivery_chunks(text):
+        parts = list(bounded(segment))
+        for index, part in enumerate(parts):
+            yield part, pause_after and index == len(parts) - 1
+
+
 def adjust_audio(audio, controls, sample_rate=24000):
     import numpy as np
     if controls["speed"] != 1:
@@ -81,10 +110,52 @@ def adjust_audio(audio, controls, sample_rate=24000):
     return audio
 
 
+def load_reference(path, sample_rate=24000):
+    """Decode references with the private runtime or the built-in macOS decoder."""
+    import numpy as np
+    import soundfile as sf
+    try:
+        info = sf.info(path)
+    except sf.LibsndfileError:
+        if sys.platform == "darwin":
+            import subprocess
+            import tempfile
+            with tempfile.TemporaryDirectory(prefix="mytwin-reference-") as directory:
+                decoded = str(Path(directory) / "reference.wav")
+                result = subprocess.run(
+                    ["/usr/bin/afconvert", "-f", "WAVE", "-d", "LEI16", str(path), decoded],
+                    capture_output=True, timeout=60,
+                )
+                if result.returncode == 0:
+                    return load_reference(decoded, sample_rate)
+        # Retain support for container formats such as browser-recorded WebM.
+        from mlx_audio.utils import load_audio
+        try:
+            audio = np.asarray(load_audio(path, sample_rate=sample_rate), dtype=np.float32)
+        except Exception as exc:
+            raise ValueError("Cannot decode this voice recording. Import a WAV, FLAC or MP3 recording, or record it again in MyTwin.") from exc
+    else:
+        if not 3 <= info.frames / info.samplerate <= 30:
+            raise ValueError("Use a clean voice reference between 3 and 30 seconds.")
+        audio, rate = sf.read(path, dtype="float32", always_2d=True)
+        audio = audio.mean(axis=1)
+        if rate != sample_rate:
+            from math import gcd
+            from scipy.signal import resample_poly
+            divisor = gcd(rate, sample_rate)
+            audio = resample_poly(audio, sample_rate // divisor, rate // divisor)
+    if not 3 <= len(audio) / sample_rate <= 30:
+        raise ValueError("Use a clean voice reference between 3 and 30 seconds.")
+    if not np.all(np.isfinite(audio)):
+        raise ValueError("The voice reference contains invalid audio. Record it again.")
+    return np.asarray(audio, dtype=np.float32)
+
+
 def operate(root, operation, request):
     root.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(root / "models")
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_XET"] = "1"
     if operation != "download":
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -100,29 +171,33 @@ def operate(root, operation, request):
     path = snapshot_download(spec["repo"], revision=spec["revision"],
                              local_files_only=operation != "download",
                              ignore_patterns=["samples/*", "*.pt", "*.md", ".gitattributes"])
+    if key == "kokoro":
+        # misaki[ja] depends on the UniDic loader without shipping its dictionary.
+        # Point Fugashi's discovery at our pinned, bundled dictionary in this worker.
+        # This avoids an unversioned first-use download and works entirely offline.
+        import unidic
+        import unidic_lite
+        unidic.DICDIR = unidic_lite.DICDIR
     model = load_model(path, model_type="kokoro" if key == "kokoro" else "qwen3_tts")
     if operation == "download":
         # Warm up text processing and every offered voice while online. This also
         # catches incompatible runtime/model pairs before marking the model ready.
         if key == "kokoro":
+            samples = {"a":"Ready.", "b":"Ready.", "j":"こんにちは。", "z":"你好。", "e":"Hola.", "f":"Bonjour.", "h":"नमस्ते।", "i":"Ciao.", "p":"Olá."}
             for voice in spec["voices"]:
-                for result in model.generate("Ready.", voice=voice, lang_code="b" if voice.startswith("b") else "a"):
+                for result in model.generate(samples[voice[0]], voice=voice, lang_code=voice[0]):
                     np.asarray(result.audio)
         marker = root / (key + ".ready.json")
         temp = marker.with_suffix(".tmp")
-        temp.write_text(json.dumps({"revision": spec["revision"]}))
+        temp.write_text(json.dumps({"revision": spec["revision"], "runtimeVersion": spec.get("runtimeVersion", 1)}))
         temp.replace(marker)
         return {"ready": True}
     validate(request)
     controls = speech_options(request.get("speech"))
     kwargs = {}
     if key in ("qwen3", "qwen3-hq"):
-        from mlx_audio.utils import load_audio
-        audio = load_audio(request["reference"], sample_rate=24000)
-        seconds = audio.shape[0] / 24000
-        if not 3 <= seconds <= 30:
-            raise ValueError("Use a clean voice reference between 3 and 30 seconds.")
         import mlx.core as mx
+        audio = mx.array(load_reference(request["reference"]), dtype=mx.float32)
         peak = float(mx.max(mx.abs(audio)))
         if peak < 0.0001:
             raise ValueError("The voice reference is too quiet. Record a clearer sample.")
@@ -131,20 +206,26 @@ def operate(root, operation, request):
         audio = audio * min(20.0, 0.9 / peak)
         kwargs = {"ref_audio": audio, "ref_text": request["referenceText"],
                   "lang_code": spec["languages"][request["language"]]}
+    elif key == "kokoro":
+        kwargs = {"voice": request["voice"], "lang_code": request["voice"][0]}
     else:
-        kwargs = {"voice": request["voice"], "lang_code": "b" if request["voice"].startswith("b") else "a"}
+        kwargs = {"lang_code": spec["languages"][request["language"]], "instruct": request.get("instruct", "")}
+        if spec["mode"] == "preset":
+            kwargs["voice"] = request["voice"]
     output = Path(request["output"])
     partial = output.with_suffix(".partial.wav")
     frames = 0
     try:
         with sf.SoundFile(str(partial), mode="w", samplerate=24000, channels=1, subtype="PCM_16") as target:
-            for segment, pause_after in delivery_chunks(request["text"]):
+            # A design preview is one generation so its identity cannot change at sentence boundaries.
+            segments = [(request["text"], False)] if spec["mode"] == "design" else kokoro_delivery_chunks(model, request["text"], request["voice"]) if key == "kokoro" else delivery_chunks(request["text"])
+            for segment, pause_after in segments:
                 segment_audio = []
-                if key in ("qwen3", "qwen3-hq"):
+                if key != "kokoro":
                     kwargs["max_tokens"] = min(1024, max(192, len(segment) * 3))
                 for result in model.generate(segment, **kwargs):
-                    if key in ("qwen3", "qwen3-hq") and result.token_count >= kwargs["max_tokens"]:
-                        raise ValueError("Qwen3 did not finish cleanly. Try a clear 5–10 second reference and check its transcript.")
+                    if key != "kokoro" and result.token_count >= kwargs["max_tokens"]:
+                        raise ValueError("Qwen3 did not finish cleanly. Try shorter text or another preview; for cloning, check the reference and transcript.")
                     if result.sample_rate != 24000:
                         raise ValueError("Unexpected model sample rate")
                     audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)

@@ -8,6 +8,25 @@ use std::{
 use tokio::io::AsyncWriteExt;
 
 pub const MAX_MEDIA: u64 = 512 * 1024 * 1024;
+
+pub fn avatar_preset(value: Option<&Value>) -> Result<Value> {
+    match value {
+        None => Ok(json!("lightx2v-4")),
+        Some(Value::String(s)) if s=="lightx2v-4" || s=="baseline" => Ok(json!(s)),
+        _ => Err("Choose a supported GX10 avatar preset.".into()),
+    }
+}
+
+fn submission(job: &Value, inputs: Value) -> Result<Value> {
+    let mut payload=json!({"clientJobId":job["id"],"kind":job["kind"],"engine":job["engine"],"text":job["text"],"language":job["language"],"inputs":inputs});
+    if job["kind"]=="avatar" && job["engine"]=="infinitetalk" {
+        if let Some(preset)=job.get("preset").filter(|v| !v.is_null()) {
+            payload["preset"]=avatar_preset(Some(preset))?;
+        }
+    }
+    Ok(payload)
+}
+
 pub fn validate_url(base: &str) -> Result<String> {
     let u = reqwest::Url::parse(base).map_err(|_| "Enter a valid GX10 address")?;
     if !["http", "https"].contains(&u.scheme())
@@ -106,6 +125,10 @@ impl Worker {
         if ["completed", "cancelled"].contains(&text(&job, "status").as_str()) {
             return Ok(());
         }
+        if job["engine"] == "infinitetalk" {
+            self.store.patch_job(id, json!({"status":"failed","stage":"Removed","error":"InfiniteTalk was removed from GX10. Choose another avatar provider."}))?;
+            return Ok(());
+        }
         let base = text(&s["settings"], "workerUrl");
         if base.is_empty() {
             return Err("Connect GX10 in Settings, then start this job.".into());
@@ -154,7 +177,7 @@ impl Worker {
                 inputs.insert(k.clone(), result["id"].clone());
             }
             let token = text(&self.secrets.lock().unwrap(), "workerToken");
-            let result=Self::checked(self.client.post(format!("{}/v1/jobs",validate_url(&base)?)).bearer_auth(token).header("Idempotency-Key",id).json(&json!({"clientJobId":id,"kind":job["kind"],"engine":job["engine"],"text":job["text"],"language":job["language"],"inputs":inputs})).send().await).await?.json::<Value>().await.map_err(|_|"Invalid submission response")?;
+            let result=Self::checked(self.client.post(format!("{}/v1/jobs",validate_url(&base)?)).bearer_auth(token).header("Idempotency-Key",id).json(&submission(&job,json!(inputs))?).send().await).await?.json::<Value>().await.map_err(|_|"Invalid submission response")?;
             if text(&result, "id").is_empty() {
                 return Err("GX10 returned an invalid job ID".into());
             }
@@ -301,6 +324,31 @@ pub fn encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn removed_infinitetalk_cannot_resume_and_keeps_completed_media() {
+        let dir=std::env::temp_dir().join(format!("mytwin-removed-{}",uid()));
+        let store=Store::open(dir.clone()).unwrap();
+        store.update(|s| {s["jobs"]=json!([
+            {"id":"running","kind":"avatar","engine":"infinitetalk","status":"running","remoteId":"old-remote"},
+            {"id":"prepared","kind":"avatar","engine":"infinitetalk","status":"prepared"},
+            {"id":"finished","kind":"avatar","engine":"infinitetalk","status":"completed","outputId":"saved-video"}
+        ]);Ok(())}).unwrap();
+        let worker=Worker::new(store.clone(),Arc::new(Mutex::new(json!({}))));
+        for id in ["running","prepared","finished"] {worker.run(id.into()).await;}
+        let state=store.read();let jobs=state["jobs"].as_array().unwrap();
+        for job in &jobs[..2] {assert_eq!(job["status"],"failed");assert!(text(job,"error").contains("removed from GX10"));}
+        assert_eq!(jobs[2]["status"],"completed");assert_eq!(jobs[2]["outputId"],"saved-video");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn avatar_submission_preserves_preset_and_legacy_jobs() {
+        let mut j=json!({"id":"job","kind":"avatar","engine":"infinitetalk","preset":"lightx2v-4"});
+        assert_eq!(submission(&j,json!({})).unwrap()["preset"],"lightx2v-4");
+        j.as_object_mut().unwrap().remove("preset");
+        assert!(submission(&j,json!({})).unwrap().get("preset").is_none());
+        j["preset"]=json!("arbitrary");
+        assert!(submission(&j,json!({})).is_err());
+    }
     #[test]
     fn validates_endpoint() {
         assert!(validate_url("file:///etc").is_err());

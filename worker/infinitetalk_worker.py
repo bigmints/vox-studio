@@ -1,5 +1,5 @@
 """MyTwin v1 adapter for the installed, memory-guarded InfiniteTalk launcher."""
-import asyncio, hashlib, hmac, json, math, os, signal, sqlite3, subprocess, sys, threading, time, uuid
+import asyncio, hashlib, hmac, json, math, os, re, signal, sqlite3, subprocess, sys, threading, time, uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 import av
@@ -10,8 +10,15 @@ from fastapi.responses import FileResponse, JSONResponse
 ROOT=Path(os.environ.get('INFINITETALK_ROOT',Path(__file__).resolve().parent))
 DATA=Path(os.environ.get('MYTWIN_WORKER_DATA',ROOT/'mytwin-data'))
 MAX_BYTES=512*1024*1024
-MAX_SECONDS=30
-STEPS=int(os.environ.get('MYTWIN_SAMPLE_STEPS','40'))
+MAX_SECONDS=16
+STEPS=int(os.environ.get('MYTWIN_SAMPLE_STEPS','8'))
+ACCEL_FILENAME='Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors'
+MOTION_PROMPTS={
+    'restrained':'Locked-off podcast close-up. A composed person speaks in a quiet, matter-of-fact interview. Neutral relaxed face, relaxed forehead and eyebrows, calm eyes. Head stays upright and steady. Torso and shoulders stay still. Small precise mouth articulation follows the speech, with occasional gentle blinking. Minimal movement throughout. The framing, lighting and background remain completely stable.',
+    'podcast':'Fixed camera podcast shot. The person speaks calmly with natural blinking, subtle head nods, breathing and restrained shoulder motion. Stable lighting and background. No camera movement, zoom, pan, cuts or exaggerated gestures.',
+}
+MOTION_PROMPTS['minimal']=MOTION_PROMPTS['restrained']
+MINIMAL_NEGATIVE='exaggerated facial expressions, theatrical acting, raised eyebrows, wide eyes, squinting, excessive blinking, grinning, big smiles, head nodding, head bobbing, head turning, torso movement, shoulder movement, emphatic gestures, camera movement, zoom, pan, cuts'
 TOKEN_FILE=Path(os.environ.get('MYTWIN_TOKEN_FILE',ROOT/'mytwin-token'))
 STOP=threading.Event()
 PROCESS_LOCK=threading.Lock()
@@ -34,7 +41,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, digest TEXT NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, stage TEXT, error TEXT, created REAL NOT NULL);
         ''')
         con.execute("UPDATE jobs SET status='failed',error='Generation was interrupted when InfiniteTalk stopped. Create a new take to retry.',stage='Interrupted' WHERE status='running'")
-        con.execute("UPDATE jobs SET status='cancelled',stage='Cancelled' WHERE status='cancel_requested'")
+        con.execute("UPDATE jobs SET status='cancelled',stage='Cancelled at startup',error='Automatic resume is disabled. Submit a new take.' WHERE status IN ('queued','cancel_requested')")
 
 def lookup(table, identifier):
     with db() as con:return con.execute(f'SELECT * FROM {table} WHERE id=?',(identifier,)).fetchone()
@@ -86,11 +93,19 @@ def run_job(job):
         # padding only the tail to the next complete window plus one frame.
         missing=math.ceil((frames+1)*16000/25)-out.tell()
         if missing>0:out.write(np.zeros(missing,dtype=np.int16))
-    spec={'prompt':'A person speaking naturally to the camera.','cond_video':str(folder/'portrait.png'),'cond_audio':{'person1':str(folder/'audio.wav')}}
+    style=payload.get('motionStyle','restrained')
+    spec={'prompt':MOTION_PROMPTS[style],'cond_video':str(folder/'portrait.png'),'cond_audio':{'person1':str(folder/'audio.wav')}}
+    if style=='minimal':spec['negative_prompt']=MINIMAL_NEGATIVE
     (folder/'input.json').write_text(json.dumps(spec))
     chunk=min(81,frames)
+    output_frames=min(81,frames) if payload.get('preview',False) else frames
     env=os.environ.copy();env['INFINITETALK_WAIT_FOR_LOCK']='1'
-    command=[sys.executable,str(ROOT/'gx10_launch.py'),'--input_json',str(folder/'input.json'),'--sample_steps',str(STEPS),'--frame_num',str(chunk),'--max_frame_num',str(frames),'--save_file',str(folder/'video')]
+    accelerated=payload.get('preset')=='lightx2v-4'
+    command=[sys.executable,str(ROOT/'gx10_launch.py'),'--input_json',str(folder/'input.json'),'--sample_steps',str(4 if accelerated else STEPS),'--frame_num',str(chunk),'--max_frame_num',str(output_frames),'--save_file',str(folder/'video')]
+    if accelerated:
+        command += ['--lora_dir',str(ROOT/'weights/acceleration'/ACCEL_FILENAME),'--lora_scale','1.0','--sample_text_guide_scale','2.0' if style=='minimal' else '1.0','--sample_audio_guide_scale','2.0','--sample_shift','2']
+    if 'seed' in payload:
+        command += ['--base_seed',str(payload['seed'])]
     with (folder/'generation.log').open('w') as log:
         with PROCESS_LOCK:
             if STOP.is_set() or lookup('jobs',identifier)['status']=='cancel_requested':
@@ -110,8 +125,11 @@ def run_job(job):
         patch(identifier,status='cancelled',stage='Cancelled');return
     if code:
         tail=(folder/'generation.log').read_text(errors='replace')[-2400:]
-        if 'Insufficient memory' in tail or 'Memory guard:' in tail:
-            error='Not enough free GX10 memory. Stop other models in the dashboard and create a new take.'
+        if 'Memory guard:' in tail:
+            detail=next((line.split('Memory guard:',1)[1].strip() for line in reversed(tail.splitlines()) if 'Memory guard:' in line),'Resource safety threshold reached.')
+            error='Safety stop: '+detail
+        elif 'Insufficient memory' in tail:
+            error='The GX10 memory preflight refused this job. Check available memory before creating a new take.'
         elif STOP.is_set():error='InfiniteTalk was stopped. Create a new take to retry.'
         else:error='InfiniteTalk could not finish this take. See the GX10 worker job log for details.'
         patch(identifier,status='failed',stage='Generation stopped',error=error);return
@@ -154,8 +172,11 @@ async def http_error(request,exc):return JSONResponse({'error':str(exc.detail)},
 
 @app.get('/v1/capabilities')
 def capabilities():
-    ready=(ROOT/'.weights-ready').exists() and (ROOT/'gx10_launch.py').exists()
-    return {'apiVersion':1,'engines':[{'id':'infinitetalk','name':'InfiniteTalk · GX10','kind':'avatar','ready':ready,'maxDurationSeconds':MAX_SECONDS,'portraitOnly':True,'note':'Uses approved audio. One job at a time; generation can take a long time.'}]}
+    disabled=(ROOT/'.generation-disabled').exists()
+    ready=(ROOT/'.weights-ready').exists() and (ROOT/'gx10_launch.py').exists() and not disabled
+    accelerated=ready and (ROOT/'weights/acceleration'/ACCEL_FILENAME).is_file()
+    note='Generation disabled while unexpected GX10 power-offs are investigated.' if disabled else 'Uses approved audio. One job at a time; stops automatically if memory gets tight.'
+    return {'apiVersion':1,'engines':[{'id':'infinitetalk','name':'InfiniteTalk · GX10','kind':'avatar','ready':ready,'maxDurationSeconds':MAX_SECONDS,'portraitOnly':True,'defaultPreset':'lightx2v-4' if accelerated else 'baseline','presets':[{'id':'lightx2v-4','name':'Accelerated · 4 steps','ready':accelerated},{'id':'baseline','name':'Baseline · 8 steps','ready':ready}],'note':note}]}
 
 def key(request):
     value=request.headers.get('idempotency-key','')
@@ -211,6 +232,12 @@ async def submit(request:Request):
             if old['digest']!=digest:raise HTTPException(409,'This job key already belongs to another request.')
             return {'id':old['id']}
         if payload.get('kind')!='avatar' or payload.get('engine')!='infinitetalk':raise HTTPException(422,'This worker supports InfiniteTalk avatar videos only. Generate or upload voice audio in MyTwin first.')
+        if payload.get('preset','baseline') not in ('baseline','lightx2v-4'):raise HTTPException(422,'Unsupported InfiniteTalk preset.')
+        style=payload.get('motionStyle','restrained')
+        if not isinstance(style,str) or style not in MOTION_PROMPTS:raise HTTPException(422,'Unsupported avatar motion style.')
+        if type(payload.get('preview',False)) is not bool:raise HTTPException(422,'Preview must be true or false.')
+        if payload.get('preset')=='lightx2v-4' and not (ROOT/'weights/acceleration'/ACCEL_FILENAME).is_file():raise HTTPException(503,'The Lightx2v adapter is not installed.')
+        if 'seed' in payload and (type(payload['seed']) is not int or not 0<=payload['seed']<=2**32-1):raise HTTPException(422,'Seed must be an unsigned 32-bit integer.')
         if not capabilities()['engines'][0]['ready']:raise HTTPException(503,'InfiniteTalk is not ready.')
         inputs=payload.get('inputs',{})
         if not isinstance(inputs,dict):raise HTTPException(422,'Portrait and audio inputs are required.')
@@ -230,8 +257,34 @@ def status(identifier:str):
     job=lookup('jobs',identifier)
     if not job:raise HTTPException(404,'Job not found.')
     result={'id':identifier,'status':job['status'],'stage':job['stage'],'error':job['error']}
+    if job['status']=='running':
+        result['stage']=generation_progress(job) or job['stage']
     if job['status']=='completed':result['output']={'id':identifier,'name':'avatar.mp4','type':'video/mp4'}
     return result
+
+def generation_progress(job):
+    """Expose the current streaming window without changing the queue state."""
+    try:
+        payload=json.loads(job['payload'])
+        audio=lookup('assets',payload['inputs']['audio'])
+        frames=max(13,math.ceil((audio['duration']*25-1)/4)*4+1)
+        if payload.get('preview',False):frames=min(81,frames)
+        windows=1+math.ceil(max(0,frames-81)/72)
+        steps=4 if payload.get('preset')=='lightx2v-4' else STEPS
+        path=DATA/'jobs'/job['id']/'generation.log'
+        with path.open('rb') as f:
+            f.seek(max(0,path.stat().st_size-65536));log=f.read().decode(errors='replace')
+        bars=[(int(p),int(n)) for p,n,total in re.findall(r'(\d+)%\|[^\r\n]*?\|\s*(\d+)/(\d+)\s+\[',log) if int(total)==steps]
+        if not bars:return None
+        completed=0;previous=None
+        for percent,_ in bars:
+            if percent==100 and previous!=100:completed+=1
+            previous=percent
+        percent,step=bars[-1]
+        if completed>=windows:return 'Finishing video'
+        if percent==100:return f'Finishing segment {completed} of {windows}'
+        return f'Generating segment {completed+1} of {windows} · step {step} of {steps}'
+    except (OSError,KeyError,TypeError,ValueError):return None
 
 @app.get('/v1/artifacts/{identifier}')
 def artifact(identifier:str):

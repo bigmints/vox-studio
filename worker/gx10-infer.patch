@@ -1,0 +1,62 @@
+--- a/gx10_infer.py
++++ b/gx10_infer.py
+@@ -1,3 +1,7 @@
++import torch
++# Set the allocator cap before importing any inference modules.
++torch.cuda.set_per_process_memory_fraction(min(1.0,60000000000/torch.cuda.get_device_properties(0).total_memory),0)
++torch.set_num_threads(4)
+ # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+ import argparse
+ import logging
+@@ -20,7 +24,7 @@
+ from wan.configs import SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
+ from wan.utils.utils import str2bool, is_video, split_wav_librosa
+ from wan.utils.multitalk_utils import save_video_ffmpeg
+-from kokoro import KPipeline
++KPipeline = None  # Approved input audio only; no TTS in this worker
+ from transformers import Wav2Vec2FeatureExtractor
+ from src.audio_analysis.wav2vec2 import Wav2Vec2Model
+ from wan.utils.segvideo import shot_detect
+@@ -538,6 +542,14 @@
+         dit_path=args.dit_path,
+         infinitetalk_dir=args.infinitetalk_dir
+     )
++    from gx10_native_bf16 import convert
++    wan_i2v.model = convert(wan_i2v.model, wan_i2v.device)
++    if args.quant is not None and args.lora_dir:
++        from gx10_lora import apply_lora
++        if len(args.lora_dir) != len(args.lora_scale):
++            raise ValueError("Each adapter requires one scale")
++        for path, scale in zip(args.lora_dir, args.lora_scale):
++            apply_lora(wan_i2v.model, path, scale)
+     if args.num_persistent_param_in_dit is not None:
+         wan_i2v.vram_management = True
+         wan_i2v.enable_vram_management(
+@@ -590,6 +602,8 @@
+         print(items)
+         input_clip = {}
+         input_clip['prompt'] = input_data['prompt']
++        if input_data.get("negative_prompt"):
++            input_clip["negative_prompt"] = input_data["negative_prompt"]
+         input_clip['cond_video'] = items[0]
+ 
+         if 'audio_type' in input_data:
+@@ -625,6 +639,10 @@
+         
+         input_clip['cond_audio'] = cond_audio
+                     
++        negative_prompt = ""
++        if input_clip.get("negative_prompt"):
++            quality_terms = [t.strip() for t in wan_i2v.sample_neg_prompt.split(",") if t.strip().lower() not in ("static", "still picture")]
++            negative_prompt = ", ".join(quality_terms + [input_clip["negative_prompt"]])
+         video = wan_i2v.generate_infinitetalk(
+             input_clip,
+             size_buckget=args.size,
+@@ -634,6 +652,7 @@
+             sampling_steps=args.sample_steps,
+             text_guide_scale=args.sample_text_guide_scale,
+             audio_guide_scale=args.sample_audio_guide_scale,
++            n_prompt=negative_prompt,
+             seed=args.base_seed,
+             offload_model=args.offload_model,
+             max_frames_num=args.frame_num if args.mode == 'clip' else args.max_frame_num,

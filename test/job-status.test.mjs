@@ -11,3 +11,14 @@ test('rendering is visible over an earlier completed take, regardless of selecte
  assert.equal(videoJobLabel({...running,status:'prepared'}),'Saved · not started');
  assert.equal(activeVideoJob([{...running,status:'failed'}],'s','voice'),undefined);
 });
+
+test('voice status surfaces a newer failure while retaining an earlier playable take',async()=>{
+ const {voiceClipState}=await import('../public/job-status.js');
+ const take={id:'ready',kind:'voice',status:'completed',createdAt:'2026-11-04T10:00:00Z'};
+ const failed={id:'failed',kind:'voice',status:'failed',createdAt:'2026-11-04T11:00:00Z'};
+ assert.equal(voiceClipState([take,failed],take).state,'failed');
+ assert.equal(voiceClipState([failed,{...take,createdAt:'2026-11-04T12:00:00Z'}],{...take,createdAt:'2026-11-04T12:00:00Z'}).state,'ready');
+ assert.equal(voiceClipState([failed,{...take,status:'running'}],take).state,'working');
+ assert.equal(voiceClipState([{...failed,kind:'video'}],take).state,'ready');
+ assert.equal(voiceClipState([],undefined).state,'empty');
+});

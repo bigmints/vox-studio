@@ -4,6 +4,7 @@ use std::{path::PathBuf, sync::{Arc, Mutex}, time::Duration, process::Stdio};
 use tokio::io::AsyncWriteExt;
 
 pub fn catalog() -> Value { serde_json::from_str(include_str!("../../local-tts/catalog.json")).unwrap() }
+pub fn is_preset(engine: &str) -> bool { ["kokoro", "qwen3-custom"].contains(&engine) }
 pub fn speech_options(value: Option<&Value>) -> Result<Value> {
     if value.is_some_and(|v|!v.is_object()) {return Err("Invalid speech controls".into());}
     let mut result=json!({});
@@ -19,9 +20,43 @@ pub fn validate(b: &Value, language: &str, transcript: &str) -> Result<()> {
     let c=catalog(); let m=&c[text(b,"engine")];
     if b["kind"]!="voice" || m.is_null() {return Err("Choose Qwen3 or Kokoro for local speech".into());}
     if m["languages"][language].is_null() {return Err("This local model does not support the selected language".into());}
-    if b["engine"]=="kokoro" && m["voices"][text(b,"voice")].is_null() {return Err("Choose a Kokoro preset voice".into());}
+    if is_preset(&text(b,"engine")) && m["voices"][text(b,"voice")].is_null() {return Err("Choose a supported preset voice".into());}
+    if b["engine"]=="kokoro" && m["voiceLanguages"][text(b,"voice")]!=language {return Err("Choose a Kokoro voice matching the selected language".into());}
     if (b["engine"]=="qwen3" || b["engine"]=="qwen3-hq") && transcript.trim().is_empty() {return Err("Add the exact voice recording transcript to your twin".into());}
+    if b.get("instruct").is_some_and(|v| !v.is_string()) || text(b,"instruct").chars().count()>2000 {return Err("Use a voice instruction of at most 2,000 characters".into());}
+    if b["engine"]=="qwen3-design" && text(b,"instruct").trim().is_empty() {return Err("Describe the voice you want to create".into());}
     Ok(())
+}
+
+pub fn prepare_preview(b: &Value, state: &Value) -> Result<Value> {
+    let clone=b["engine"]=="qwen3"||b["engine"]=="qwen3-hq";
+    let transcript=text(b,"voiceTranscript").trim().to_string();
+    let mut request=b.clone();request["kind"]=json!("voice");validate(&request,&text(b,"language"),&transcript)?;
+    if clone&&!state["assets"].as_array().is_some_and(|assets|assets.iter().any(|a|a["id"]==b["voiceAssetId"]&&text(a,"type").starts_with("audio/"))){return Err("Add a voice recording before previewing your cloned voice".into());}
+    if transcript.chars().count()>3000{return Err("Use a recording transcript of at most 3,000 characters".into());}
+    let words=text(b,"text");if words.trim().is_empty() || words.chars().count()>300 {return Err("Use 1–300 characters for a voice preview".into());}
+    Ok(json!({"id":uid(),"kind":"voice","purpose":"voice-preview","provider":"local","engine":b["engine"],"voice":text(b,"voice"),"voiceMode":if clone {"clone"} else if b["engine"]=="qwen3-design" {"design"} else {"preset"},"language":b["language"],"text":words.trim(),"instruct":text(b,"instruct"),"inputs":if clone {json!({"voice":b["voiceAssetId"]})} else {json!({})},"referenceText":transcript,"projectId":"","sectionId":"","projectTitle":"Voice previews","sectionTitle":if clone {"My cloned voice"} else {"Voice preview"},"status":"queued","stage":"Waiting for local engine","createdAt":now(),"updatedAt":now(),"approved":false}))
+}
+
+pub fn saved_voice(b: &Value, state: &Value) -> Result<Value> {
+    let language=if text(b,"localVoiceLanguage").is_empty(){"en".to_string()}else{text(b,"localVoiceLanguage")};
+    let mut fields=json!({"localEngine":text(b,"localEngine"),"localVoice":text(b,"localVoice"),"localVoiceInstruction":text(b,"localVoiceInstruction"),"localVoiceLanguage":language,"voicePreviewJobId":text(b,"voicePreviewJobId"),"voiceDesign":if b["localEngine"]=="qwen3-hq" {b["voiceDesign"].clone()} else {Value::Null}});
+    for key in ["speechModel","voiceEngine","voiceMode","voice"] {
+        if b.get(key).is_some_and(|v|!v.is_string())||text(b,key).chars().count()>200{return Err(format!("Use a valid voice {key}"));}
+        fields[key]=json!(text(b,key));
+    }
+    if !text(b,"voiceMode").is_empty()&&!["preset","clone"].contains(&text(b,"voiceMode").as_str()){return Err("Choose a preset voice or a recording".into());}
+    if text(b,"localVoiceInstruction").chars().count()>2000{return Err("Use at most 2,000 characters for voice instructions".into());}
+    if b["voiceProvider"]!="local" {return Ok(fields);}
+    let c=catalog();let model=&c[text(b,"localEngine")];if model.is_null(){return Err("Choose a local voice model".into());}
+    if model["mode"]=="preset" {validate(&json!({"kind":"voice","engine":b["localEngine"],"voice":b["localVoice"],"instruct":text(b,"localVoiceInstruction")}),&language,"")?;}
+    if model["mode"]=="design" {
+        let j=state["jobs"].as_array().unwrap().iter().find(|j|j["id"]==b["voicePreviewJobId"]&&j["purpose"]=="voice-preview"&&j["engine"]=="qwen3-design"&&j["status"]=="completed").ok_or("Generate and choose a preview of this voice before saving")?;
+        if !state["assets"].as_array().unwrap().iter().any(|a|a["id"]==j["outputId"]&&a["type"]=="audio/wav") || j["instruct"]!=fields["localVoiceInstruction"] || j["language"]!=language {return Err("Generate and choose a preview of this voice before saving".into());}
+        if !j["duration"].as_f64().is_some_and(|n|(3.0..=30.0).contains(&n)){return Err("Generate a voice preview between 3 and 30 seconds before saving".into());}
+        fields["localEngine"]=json!("qwen3-hq");fields["localVoice"]=json!("");fields["voiceAssetId"]=j["outputId"].clone();fields["voiceTranscript"]=j["text"].clone();fields["voiceDesign"]=json!({"instruct":j["instruct"],"language":j["language"],"previewJobId":j["id"]});
+    }
+    Ok(fields)
 }
 #[derive(Clone)]
 pub struct LocalTts {
@@ -37,7 +72,7 @@ impl LocalTts {
         let mut models=catalog();
         for (key,spec) in models.as_object_mut().unwrap() {
             let marker=std::fs::read(self.root().join(format!("{key}.ready.json"))).ok().and_then(|v|serde_json::from_slice::<Value>(&v).ok());
-            spec["ready"]=json!(marker.is_some_and(|v|v["revision"]==spec["revision"]) && self.root().join("venv/bin/python").exists());
+            spec["ready"]=json!(marker.is_some_and(|v|v["revision"]==spec["revision"] && v["runtimeVersion"].as_u64().unwrap_or(1)==spec["runtimeVersion"].as_u64().unwrap_or(1)) && self.root().join("venv/bin/python").exists());
         }
         let mut status=self.setup.lock().unwrap().clone();status["models"]=models;
         status["supported"]=json!(cfg!(all(target_os="macos",target_arch="aarch64")));status
@@ -72,6 +107,12 @@ impl LocalTts {
             let mut setup=client.setup.lock().unwrap();setup["busy"]=json!(false);if let Err(e)=result{setup["error"]=json!(e);}
         });Ok(json!({"ok":true}))
     }
+    pub fn preview(&self,b:&Value)->Result<Value> {
+        let job=prepare_preview(b,&self.store.read())?;
+        if self.status()["models"][text(&job,"engine")]["ready"]!=true {return Err("Download this model in Settings → Local speech first".into());}
+        self.store.update(|s|{s["jobs"].as_array_mut().unwrap().insert(0,job.clone());Ok(())})?;
+        let client=self.clone();let id=text(&job,"id");tauri::async_runtime::spawn(async move{client.run(id).await;});Ok(job)
+    }
     pub fn claim(&self,id:&str)->Result<()> {self.store.update(|s|{
         let j=s["jobs"].as_array_mut().unwrap().iter_mut().find(|j|j["id"]==id).ok_or("Take not found")?;
         if j["provider"]!="local"||j["status"]!="prepared"{return Err("This take has already been submitted. Generate a new take.".into());}
@@ -99,6 +140,7 @@ impl LocalTts {
         let result=self.process("generate",j.clone()).await;
         let saved=(||->Result<()> {
             let result=result?;
+            if j["engine"]=="qwen3-design" && !result["duration"].as_f64().is_some_and(|n|(3.0..=30.0).contains(&n)) {return Err("This design preview must be 3–30 seconds. Adjust the preview text and try again".into());}
             if std::fs::metadata(&output).map_err(|e|e.to_string())?.len()>128*1024*1024{return Err("Local audio exceeds 128 MB".into());}
             let bytes=std::fs::read(&output).map_err(|e|e.to_string())?;
             if bytes.len()<=44||bytes.len()>128*1024*1024||&bytes[..4]!=b"RIFF"||&bytes[8..12]!=b"WAVE"{return Err("Local engine returned invalid WAV audio".into());}
@@ -115,6 +157,39 @@ impl LocalTts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn cloud_twin_preferences_are_preserved_and_validated() {
+        let b=json!({"voiceProvider":"openrouter","speechModel":"provider/model","voiceMode":"preset","voice":"warm"});
+        let saved=saved_voice(&b,&json!({})).unwrap();assert_eq!(saved["speechModel"],"provider/model");assert_eq!(saved["voice"],"warm");
+        assert!(saved_voice(&json!({"voiceMode":"invalid"}),&json!({})).is_err());
+        assert!(saved_voice(&json!({"speechModel":"x".repeat(201)}),&json!({})).is_err());
+    }
+    #[test] fn cloned_previews_snapshot_a_valid_recording() {
+        let state=json!({"assets":[{"id":"ref","type":"audio/wav"}]});
+        let mut b=json!({"engine":"qwen3-hq","language":"en","text":"Trying a new sentence.","voiceAssetId":"ref","voiceTranscript":"Original words."});
+        let job=prepare_preview(&b,&state).unwrap();assert_eq!(job["inputs"]["voice"],"ref");assert_eq!(job["referenceText"],"Original words.");assert_eq!(job["voiceMode"],"clone");
+        assert!(prepare_preview(&b,&json!({"assets":[]})).is_err());
+        assert!(prepare_preview(&b,&json!({"assets":[{"id":"ref","type":"video/mp4"}]})).is_err());
+        b["voiceTranscript"]=json!("");assert!(prepare_preview(&b,&state).is_err());
+        b["voiceTranscript"]=json!("x".repeat(3001));assert!(prepare_preview(&b,&state).is_err());
+    }
+    #[test] fn all_presets_validate_with_correct_languages() {
+        let c=catalog();assert_eq!(c["kokoro"]["voices"].as_object().unwrap().len(),54);
+        for (voice,language) in c["kokoro"]["voiceLanguages"].as_object().unwrap(){
+            let b=json!({"kind":"voice","engine":"kokoro","voice":voice});
+            assert!(validate(&b,language.as_str().unwrap(),"").is_ok());
+            assert!(validate(&b,if language=="en"{"ja"}else{"en"},"").is_err());
+        }
+        for voice in c["qwen3-custom"]["voices"].as_object().unwrap().keys(){assert!(validate(&json!({"kind":"voice","engine":"qwen3-custom","voice":voice}),"en","").is_ok());}
+    }
+    #[test] fn design_save_requires_matching_completed_preview() {
+        let mut job=prepare_preview(&json!({"engine":"qwen3-design","language":"en","text":"Exact preview words.","instruct":"Warm female voice"}),&json!({})).unwrap();
+        job["status"]=json!("completed");job["outputId"]=json!("audio");job["duration"]=json!(8);
+        let state=json!({"jobs":[job.clone()],"assets":[{"id":"audio","type":"audio/wav"}]});
+        let mut b=json!({"voiceProvider":"local","localEngine":"qwen3-design","localVoiceLanguage":"en","localVoiceInstruction":job["instruct"],"voicePreviewJobId":job["id"]});
+        let saved=saved_voice(&b,&state).unwrap();assert_eq!(saved["localEngine"],"qwen3-hq");assert_eq!(saved["voiceAssetId"],"audio");assert_eq!(saved["voiceTranscript"],job["text"]);
+        b["localVoiceInstruction"]=json!("Different voice");assert!(saved_voice(&b,&state).is_err());
+        assert!(prepare_preview(&json!({"engine":"qwen3-design","language":"en","text":"Hello"}),&json!({})).is_err());
+    }
     #[test]
     fn validates_delivery_controls() {
         assert_eq!(speech_options(None).unwrap(), json!({"speed":1.0,"sentencePause":0.0,"volume":1.0}));

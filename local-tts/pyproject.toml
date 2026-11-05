@@ -4,7 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.11,<3.12"
 dependencies = [
   "mlx-audio==0.6.4",
-  "misaki[en]==0.9.4",
+  "misaki[en,ja,zh]==0.9.4",
+  "unidic-lite==1.0.8",
   "soundfile==0.13.1",
   "pedalboard==0.9.26",
   "en-core-web-sm",
