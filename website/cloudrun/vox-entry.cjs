@@ -2,19 +2,23 @@
 const http=require('node:http'), net=require('node:net'), fs=require('node:fs'), path=require('node:path');
 const {spawn}=require('node:child_process');
 const MIME={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.wav':'audio/wav','.xml':'application/xml','.txt':'text/plain; charset=utf-8'};
-function createRouter(root,upstreamPort){
+function createRouter(root,upstreamPort,marketingRoot=null){
  const server=http.createServer((req,res)=>{
   let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);}catch{res.writeHead(400).end();return;}
-  if(pathname!=='/vox'&&!pathname.startsWith('/vox/')){
+  const marketingPages={'/':'index.html','/app':'app/index.html','/app/':'app/index.html','/studio':'studio/index.html','/studio/':'studio/index.html','/cowork':'cowork/index.html','/cowork/':'cowork/index.html','/privacy':'privacy/index.html','/privacy/':'privacy/index.html','/terms':'terms/index.html','/terms/':'terms/index.html','/data-privacy':'data-privacy/index.html','/data-privacy/':'data-privacy/index.html'};
+  const mainPage=marketingRoot&&marketingPages[pathname];
+  const mainAsset=marketingRoot&&pathname.startsWith('/main-assets/');
+  if(!mainPage&&!mainAsset&&pathname!=='/vox'&&!pathname.startsWith('/vox/')){
    const proxy=http.request({hostname:'127.0.0.1',port:upstreamPort,path:req.url,method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
    proxy.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end('Application starting. Please retry.');});
    req.on('aborted',()=>proxy.destroy());res.on('close',()=>proxy.destroy());req.pipe(proxy);return;
   }
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{Allow:'GET, HEAD'}).end();return;}
   if(pathname==='/vox'||pathname==='/vox/docs'){res.writeHead(308,{Location:pathname+'/'+new URL(req.url,'http://localhost').search}).end();return;}
-  let relative=pathname.slice('/vox/'.length);if(relative===''||relative==='docs/')relative+='index.html';
-  const file=path.resolve(root,relative);
-  if(!file.startsWith(path.resolve(root)+path.sep)||relative.split('/').some(segment=>segment.startsWith('.'))){res.writeHead(404).end();return;}
+  let relative=mainPage||(mainAsset?'assets/'+pathname.slice('/main-assets/'.length):pathname.slice('/vox/'.length));if(relative===''||relative==='docs/')relative+='index.html';
+  const contentRoot=mainPage||mainAsset?marketingRoot:root;
+  const file=path.resolve(contentRoot,relative);
+  if(!file.startsWith(path.resolve(contentRoot)+path.sep)||relative.split('/').some(segment=>segment.startsWith('.'))){res.writeHead(404).end();return;}
   fs.stat(file,(error,stat)=>{
    if(error||!stat.isFile()){res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'}).end('Page not found');return;}
    const etag='"'+stat.size+'-'+Math.trunc(stat.mtimeMs)+'"';
@@ -44,7 +48,7 @@ function createRouter(root,upstreamPort){
 module.exports={createRouter};
 if(require.main===module){
  const child=spawn(process.execPath,['/app/server.js'],{env:{...process.env,PORT:'8081',HOSTNAME:'127.0.0.1'},stdio:'inherit'});
- const server=createRouter('/app/vox-public',8081);let shuttingDown=false;
+ const server=createRouter('/app/vox-public',8081,'/app/fikr-main');let shuttingDown=false;
  child.on('exit',code=>{if(!shuttingDown){console.error('Upstream exited');process.exit(code||1);}});child.on('error',()=>process.exit(1));
  let attempts=0;
  function ready(){const probe=net.connect(8081,'127.0.0.1',()=>{probe.end();server.listen(Number(process.env.PORT)||8080,'0.0.0.0');});probe.on('error',()=>{if(++attempts>240){child.kill();process.exit(1);}setTimeout(ready,250);});}

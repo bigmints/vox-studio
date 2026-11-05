@@ -1,11 +1,12 @@
 {
-  "url": "https://fikr.one/vox/",
+  "url": "https://fikr.one/",
   "project": "fikr-apps",
   "region": "us-central1",
   "service": "ssrfikrapps",
-  "revision": "ssrfikrapps-00083-xeq",
-  "previousRevision": "ssrfikrapps-00075-hzl",
-  "baseImage": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:b825fcaba5ffc912c1a8570a893ac1a7ce47d1f1425655aa95feebab8d177cea",
-  "image": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:e79bd9414e55bfc5c9d87b4f9d61af7c96948f21cc70f223ea5baeef14497f42",
-  "build": "f95ee5c1-7639-4136-969a-db7f82ccc5bd"
+  "revision": "ssrfikrapps-00085-yav",
+  "previousRevision": "ssrfikrapps-00083-xeq",
+  "baseImage": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:e79bd9414e55bfc5c9d87b4f9d61af7c96948f21cc70f223ea5baeef14497f42",
+  "image": "us-central1-docker.pkg.dev/fikr-apps/cloud-run-source-deploy/ssrfikrapps@sha256:a38daa0eb91dd43c7858d815e0816d73c710e547c694a3b5604b656301b20a0b",
+  "build": "d75f59b1-2c6f-4a6c-9c4b-540efe6ac5ef",
+  "marketingSource": "website/main"
 }

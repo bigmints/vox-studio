@@ -25,3 +25,6 @@ deploy/voicestudio/results/
 secrets.json
 .env.*
 !.env.example
+
+# Private source/design snapshots retained locally for the owner
+/design-backups/

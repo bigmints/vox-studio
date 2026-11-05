@@ -41,5 +41,21 @@ The earlier `scripts/deploy-fikr-hosting.py` helper is retained for Firebase-hos
 The verified live deployment is recorded in `cloudrun/deployment.json`. Rollback, if needed:
 
 ```sh
-gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00075-hzl=100
+gcloud --configuration=fikr-deploy run services update-traffic ssrfikrapps --project=fikr-apps --region=us-central1 --to-revisions=ssrfikrapps-00083-xeq=100
 ```
+
+## Unified Fikr marketing site
+
+`main/` contains the redesigned Fikr homepage, Go/Studio/Cowork product pages, and legal-page presentation. The main navigation and footer are shared in the rendered Vox pages as well. The homepage product tabs include the interactive Vox demo; its audio URLs resolve from its script path so it plays from either homepage or product page.
+
+The route layer serves the exact marketing routes and `/main-assets/`, while `/login`, `/register`, `/subscribe`, `/dashboard`, `/api/**`, and all other app routes continue to reach the existing Next.js application. Pricing values, app-store links, contact address, and legal wording were retained from the original published site.
+
+Local preview:
+
+```sh
+node website/scripts/preview-main.cjs
+```
+
+Open http://127.0.0.1:4322/. In this preview only, backend routes redirect to the live site. Development source and build assets for the original Fikr site were backed up locally before editing; private snapshots are intentionally excluded from Git.
+
+The main Fikr source also contains synchronized public/fikr-marketing, public/main-assets, and public/vox files, with targeted Next.js beforeFiles rewrites and public-static-path allowances, so its future standard source deployments retain this design. Existing uncommitted application source was preserved.
