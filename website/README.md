@@ -12,7 +12,7 @@ From this directory, run `python3 -m http.server 4321 --directory dist` and open
 
 Production URL: https://bigmints.github.io/vox-studio/
 
-Relative asset and navigation paths support the repository subpath. The screenshot is an actual MyTwin app capture. `dist/assets/site.js` provides mobile navigation and documentation copy buttons.
+Relative asset and navigation paths support the repository subpath. The interactive studio preview mirrors the app’s podcast dialogue, inspector, and timeline layout. `dist/assets/preview.js` implements editable turns, speaker assignment, reordering, duplication, deletion, track mute/volume, timing, seeking, and browser speech playback. Demo timing is estimated; browser voices do not represent the desktop voice engines. No API key or backend is used. `dist/assets/site.js` provides mobile navigation and documentation copy buttons.
 
 ## Packaged releases
 
