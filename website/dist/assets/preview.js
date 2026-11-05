@@ -7,25 +7,31 @@
   ];
   let turns = initial(), selected = 1, nextId = 3, position = 0, playing = false, token = 0, timer = null;
   const speakers = {host:{name:'Host', volume:1, muted:false, voice:''},guest:{name:'Guest',volume:1,muted:false,voice:''}};
-  const synth = window.speechSynthesis;
-  const canSpeak = !!synth && typeof window.SpeechSynthesisUtterance === 'function';
-  let voices = [], speed = 1, gap = .35, pane = 'script';
+  const recordings = {"host": {"url": "assets/audio/host.wav", "duration": 7.025}, "guest": {"url": "assets/audio/guest.wav", "duration": 6.0}, "host-heart": {"url": "assets/audio/host-heart.wav", "duration": 5.9}, "guest-george": {"url": "assets/audio/guest-george.wav", "duration": 7.025}};
+  let activeAudio = null;
+  let speed = 1, gap = .35, pane = 'script';
   const icon = path => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
   root.innerHTML = `
     <div class="dp-top"><span class="dp-project">My first podcast <span aria-hidden="true">⌄</span></span><button data-reset>New</button><div class="dp-workspace-switch"><span>${icon('M3 10v4m4-8v12m5-15v18m5-15v12m4-8v4')} Audio</span></div><span class="dp-top-note">Interactive preview</span><button data-about aria-label="About this demo">${icon('M4 4h16v16H4zm11 0v16')}</button></div>
     <div class="dp-body"><aside class="dp-rail" aria-label="Demo tools"><div class="dp-rail-mark" aria-hidden="true">${icon('M3 10v4m4-8v12m5-15v18m5-15v12m4-8v4')}</div><button aria-label="Edit episode dialogue" data-focus-editor>${icon('M4 4h16v16H4zm5 0v16m4-11 4 3-4 3z')}</button><button aria-label="Speaker voice settings" data-voices>${icon('M8 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0M4 21v-3a8 8 0 0 1 16 0v3')}</button><button aria-label="About this interactive demo" data-about>${icon('M12 8v1m0 3v5M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20')}</button></aside>
     <div class="dp-main"><div class="dp-tools"><div class="dp-characters"><span><b>1</b>Host <small>My voice</small></span><span><b>2</b>Guest <small>Guest voice</small></span></div><div class="dp-tools-right"><button data-voices>Speakers &amp; voices</button><label><span>Timing</span><select data-pacing aria-label="Demo conversation timing"><option value=".15">Quick exchange</option><option value=".35" selected>Natural conversation</option><option value=".8">Relaxed conversation</option></select></label></div></div>
-    <div class="dp-modal" data-about-panel hidden><h3>Try the MyTwin workflow</h3><p>Edit dialogue, assign speakers, reorder turns, and explore the timeline. Playback uses your browser’s speech voices, not MyTwin’s voice engines. Timeline durations are estimates. This demo stays on this page; it does not create projects in the desktop app.</p><button data-about-close>Back to the studio</button></div>
+    <div class="dp-modal" data-about-panel hidden><h3>Try the MyTwin workflow</h3><p>Edit dialogue, assign speakers, reorder turns, and explore the timeline. Playback uses prepared Kokoro neural voice recordings from MyTwin. Edited scripts need a new voice take in the desktop app. This demo stays on this page; it does not create projects in the desktop app.</p><button data-about-close>Back to the studio</button></div>
     <div class="dp-status" data-status role="status" aria-live="polite">Try it: select a turn, edit the script, then press play.</div>
     <div class="dp-workspace"><section class="dp-dialogue" aria-label="Demo episode dialogue"><div class="dp-heading"><h3>Episode dialogue</h3><span class="dp-count" data-count></span></div><p class="dp-hint">Edit the dialogue, listen to the conversation, then adjust the timing below.</p><div class="dp-turns" data-turns></div></section>
-    <section class="dp-editor" aria-label="Demo turn editor"><h3 data-editor-title>Host · Turn 1</h3><label for="demo-speaker">Speaking</label><select class="dp-speaker" id="demo-speaker"><option value="host">Host</option><option value="guest">Guest</option></select><div class="dp-tabs" role="tablist" aria-label="Turn settings"><button id="demo-script-tab" role="tab" aria-selected="true" aria-controls="demo-script-panel" data-pane="script">Script</button><button id="demo-voice-tab" role="tab" aria-selected="false" aria-controls="demo-voice-panel" data-pane="voice">Voice</button></div><div id="demo-script-panel" role="tabpanel" aria-labelledby="demo-script-tab"><label for="demo-script">Script</label><textarea id="demo-script" maxlength="800" spellcheck="true"></textarea><span class="dp-word-count" data-words></span></div><div class="dp-voice-pane" id="demo-voice-panel" role="tabpanel" aria-labelledby="demo-voice-tab" hidden><label for="demo-voice">Browser preview voice</label><select id="demo-voice"></select><p>The website uses browser voices for this preview. Download MyTwin to use local models, voice cloning, and connected providers.</p><button data-audition>Listen to this turn</button></div></section></div>
+    <section class="dp-editor" aria-label="Demo turn editor"><h3 data-editor-title>Host · Turn 1</h3><label for="demo-speaker">Speaking</label><select class="dp-speaker" id="demo-speaker"><option value="host">Host</option><option value="guest">Guest</option></select><div class="dp-tabs" role="tablist" aria-label="Turn settings"><button id="demo-script-tab" role="tab" aria-selected="true" aria-controls="demo-script-panel" data-pane="script">Script</button><button id="demo-voice-tab" role="tab" aria-selected="false" aria-controls="demo-voice-panel" data-pane="voice">Voice</button></div><div id="demo-script-panel" role="tabpanel" aria-labelledby="demo-script-tab"><label for="demo-script">Script</label><textarea id="demo-script" maxlength="800" spellcheck="true"></textarea><span class="dp-word-count" data-words></span></div><div class="dp-voice-pane" id="demo-voice-panel" role="tabpanel" aria-labelledby="demo-voice-tab" hidden><label for="demo-voice">Neural preview voice</label><select id="demo-voice"></select><p>The website uses Kokoro neural voice recordings for this preview. Download MyTwin to use local models, voice cloning, and connected providers.</p><button data-audition>Listen to this turn</button></div></section></div>
     <div class="dp-transport"><button class="dp-play" data-play aria-label="Play conversation">▶</button><button data-stop aria-label="Stop and return to beginning">■</button><span class="dp-time" data-time>0:00 / 0:00</span><label class="dp-speed">Speed <select data-speed aria-label="Demo playback speed"><option value=".75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></label><div class="dp-edit-actions"><button data-duplicate>Duplicate</button><button data-delete>Delete</button><button class="dp-primary" data-add>+ Turn</button></div></div>
     <div class="dp-timeline" aria-label="Demo conversation timeline"><div class="dp-seek-row"><label for="demo-seek">TRACKS</label><input type="range" id="demo-seek" min="0" max="20" value="0" step=".1" aria-label="Seek conversation in seconds"></div><div data-tracks></div></div>
-    <div class="dp-foot"><span>Interactive preview · Browser voices · Estimated timing</span><a href="docs/#podcasts">Explore the full app ↗</a></div></div></div>`;
+    <div class="dp-foot"><span>Interactive preview · Kokoro neural voice samples</span><a href="docs/#podcasts">Explore the full app ↗</a></div></div></div>`;
   const $ = selector => root.querySelector(selector);
   const safe = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const wordCount = text => text.trim() ? text.trim().split(/\s+/).length : 0;
-  const duration = turn => Math.max(1.5, wordCount(turn.text) / (2.5 * speed));
+  const sampleFor = turn => {
+    const line = initial().find(t => t.text === turn.text);
+    if (!line) return null;
+    const voice = speakers[turn.speaker].voice || (turn.speaker === 'host' ? 'george' : 'heart');
+    return recordings[line.speaker === 'host' ? (voice === 'heart' ? 'host-heart' : 'host') : (voice === 'george' ? 'guest-george' : 'guest')];
+  };
+  const duration = turn => sampleFor(turn) ? sampleFor(turn).duration / speed : Math.max(1.5, wordCount(turn.text) / (2.5 * speed));
   const layout = () => { let cursor = 0; return turns.map(turn => { const clip = {...turn,start:cursor,duration:duration(turn)}; cursor += clip.duration + gap; return clip; }); };
   const total = () => {const clips=layout();return clips.length?clips.at(-1).start+clips.at(-1).duration:0;};
   const current = () => turns.find(turn=>turn.id===selected);
@@ -39,13 +45,13 @@
     root.querySelectorAll('.dp-playhead').forEach(el=>el.style.left=`${length?position/length*100:0}%`);
   }
   function stop(reset=false) {
-    token++; playing=false; clearTimeout(timer); synth?.cancel();
+    token++; playing=false; clearTimeout(timer); if(activeAudio){activeAudio.pause(); activeAudio.src=''; activeAudio=null;}
     if(reset) position=0;
     $('[data-play]').textContent='▶'; $('[data-play]').setAttribute('aria-label','Play conversation'); updatePosition();
   }
   function renderTurns() {
     $('[data-count]').textContent=`${turns.length} dialogue turns`;
-    $('[data-turns]').innerHTML=turns.map((turn,index)=>`<article class="dp-turn ${turn.id===selected?'selected':''}"><div class="dp-turn-head"><span>${String(index+1).padStart(2,'0')}</span><strong>${speakers[turn.speaker].name}</strong><span>${turn.text.trim()?'Script ready':'Add script'}</span></div><button class="dp-turn-text" data-select="${turn.id}" aria-label="Edit turn ${index+1}">${safe(turn.text)||'Write something for this speaker…'}</button><div class="dp-turn-actions"><button data-turn-voice="${turn.id}">Voice settings</button><button data-from="${turn.id}">Play from here</button><button data-move="${turn.id}" data-dir="-1" aria-label="Move turn ${index+1} earlier" ${index===0?'disabled':''}>↑</button><button data-move="${turn.id}" data-dir="1" aria-label="Move turn ${index+1} later" ${index===turns.length-1?'disabled':''}>↓</button></div></article>`).join('');
+    $('[data-turns]').innerHTML=turns.map((turn,index)=>`<article class="dp-turn ${turn.id===selected?'selected':''}"><div class="dp-turn-head"><span>${String(index+1).padStart(2,'0')}</span><strong>${speakers[turn.speaker].name}</strong><span>${turn.text.trim()?(sampleFor(turn)?'Voice ready':'Needs new voice'):'Add script'}</span></div><button class="dp-turn-text" data-select="${turn.id}" aria-label="Edit turn ${index+1}">${safe(turn.text)||'Write something for this speaker…'}</button><div class="dp-turn-actions"><button data-turn-voice="${turn.id}">Voice settings</button><button data-from="${turn.id}">Play from here</button><button data-move="${turn.id}" data-dir="-1" aria-label="Move turn ${index+1} earlier" ${index===0?'disabled':''}>↑</button><button data-move="${turn.id}" data-dir="1" aria-label="Move turn ${index+1} later" ${index===turns.length-1?'disabled':''}>↓</button></div></article>`).join('');
   }
   function renderTracks() {
     const clips=layout(), length=total();
@@ -54,8 +60,8 @@
   }
   function renderVoice() {
     const speaker=speakers[current().speaker];
-    $('#demo-voice').innerHTML='<option value="">Browser default</option>'+voices.map(v=>`<option value="${safe(v.voiceURI)}">${safe(v.name)} (${safe(v.lang)})</option>`).join('');
-    $('#demo-voice').value=speaker.voice;
+    $('#demo-voice').innerHTML='<option value="george">George · Kokoro · British English</option><option value="heart">Heart · Kokoro · American English</option>';
+    $('#demo-voice').value=speaker.voice || (current().speaker==='host'?'george':'heart');
   }
   function setPane(next) {
     pane=next;
@@ -72,17 +78,16 @@
   function render() { renderTurns(); renderTracks(); renderEditor(); }
   function select(id, nextPane='script') { stop(); selected=id; pane=nextPane; render(); }
   function play(onlyTurn = false) {
-    if(!canSpeak) { status('Speech playback is not supported in this browser. You can still edit the script and timeline.'); return; }
     stop(); const run=token; const clips=layout();
     if(position>=total()-.05) position=0;
     let index=clips.findIndex(c=>c.start+c.duration>position);
     if(index<0) index=0;
     const stopAt = onlyTurn ? index + 1 : clips.length;
     playing=true; $('[data-play]').textContent='Ⅱ'; $('[data-play]').setAttribute('aria-label','Pause conversation');
-    status('Playing with your browser’s voices. Timeline timing is estimated.');
+    status('Playing Kokoro neural voice samples from MyTwin.');
     function next() {
       if(run!==token) return;
-      if(index>=stopAt) {const last=clips[stopAt-1];position=last.start+last.duration;stop();status('Preview finished. Edit a turn to make it your own.');return;}
+      if(index>=stopAt) {const last=clips[stopAt-1];position=last.start+last.duration;stop();status('Preview finished. Try another voice or explore the dialogue controls.');return;}
       const clip=clips[index++], speaker=speakers[clip.speaker];
       const offset=Math.max(0,position-clip.start), fraction=Math.min(offset/clip.duration,.99);
       let startChar=Math.floor(clip.text.length*fraction);
@@ -91,13 +96,15 @@
       if(!clip.text.trim()||speaker.muted||speaker.volume===0) {
         timer=setTimeout(()=>{if(run!==token)return;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);}, Math.max(0,clip.duration-offset)*1000);return;
       }
-      const utterance=new SpeechSynthesisUtterance(clip.text.slice(startChar));
-      utterance.rate=speed;utterance.volume=speaker.volume;
-      const voice=voices.find(v=>v.voiceURI===speaker.voice);if(voice) utterance.voice=voice;
-      utterance.onboundary=event=>{if(run!==token)return;position=clip.start+(startChar+event.charIndex)/Math.max(1,clip.text.length)*clip.duration;updatePosition();};
-      utterance.onend=()=>{if(run!==token)return;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);};
-      utterance.onerror=()=>{if(run!==token)return;stop();status('This browser could not play that voice. Choose another browser voice and try again.');};
-      synth.speak(utterance);
+      const recording=sampleFor(clip);
+      if(!recording){stop();status('This edited script needs a new voice take. Generate it in MyTwin, or choose New to hear the prepared samples.');return;}
+      const audio=new Audio(recording.url);activeAudio=audio;
+      audio.playbackRate=speed;audio.volume=speaker.volume;
+      audio.onloadedmetadata=()=>{if(run===token)audio.currentTime=Math.min(offset*speed,Math.max(0,audio.duration-.01));};
+      audio.ontimeupdate=()=>{if(run!==token)return;position=clip.start+audio.currentTime/speed;updatePosition();};
+      audio.onended=()=>{if(run!==token)return;activeAudio=null;position=clip.start+clip.duration;updatePosition();timer=setTimeout(next,gap*1000);};
+      audio.onerror=()=>{if(run!==token)return;stop();status('The sample could not load. Check your connection and try again.');};
+      audio.play().catch(()=>{if(run!==token)return;stop();status('Press play again to start the neural voice sample.');});
     }
     next();
   }
@@ -121,17 +128,15 @@
     else if(b.hasAttribute('data-delete')) {if(turns.length===1)return;stop(true);const i=turns.indexOf(current());turns.splice(i,1);selected=turns[Math.min(i,turns.length-1)].id;render();status('Turn deleted.');}
     else if(b.dataset.mute) {stop();const s=speakers[b.dataset.mute];s.muted=!s.muted;renderTracks();status(`${s.name} ${s.muted?'muted':'unmuted'}.`);}
   });
-  $('#demo-script').addEventListener('input',()=>{stop();current().text=$('#demo-script').value;renderTurns();renderTracks();$('[data-words]').textContent=`${wordCount(current().text)} words · ~${duration(current()).toFixed(1)} sec`;});
+  $('#demo-script').addEventListener('input',()=>{stop();current().text=$('#demo-script').value;status(sampleFor(current())?'Prepared neural voice sample ready.':'Edited script: generate a new voice take in MyTwin. Choose New to restore the audio samples.');renderTurns();renderTracks();$('[data-words]').textContent=`${wordCount(current().text)} words · ~${duration(current()).toFixed(1)} sec`;});
   $('#demo-speaker').addEventListener('change',()=>{stop();current().speaker=$('#demo-speaker').value;render();status('Speaker and timeline track updated.');});
-  $('#demo-voice').addEventListener('change',()=>{stop();speakers[current().speaker].voice=$('#demo-voice').value;status('Browser preview voice selected.');});
+  $('#demo-voice').addEventListener('change',()=>{stop();speakers[current().speaker].voice=$('#demo-voice').value;renderTracks();renderEditor();status('Neural preview voice selected.');});
   $('[data-pacing]').addEventListener('change',()=>{stop(true);gap=Number($('[data-pacing]').value);renderTracks();status('Conversation gaps updated.');});
   $('[data-speed]').addEventListener('change',()=>{stop(true);speed=Number($('[data-speed]').value);renderTracks();renderEditor();status('Playback speed updated.');});
   $('#demo-seek').addEventListener('input',()=>{const value=Number($('#demo-seek').value);stop();position=value;updatePosition();});
   root.addEventListener('input',event=>{if(event.target.dataset.volume){stop();speakers[event.target.dataset.volume].volume=Number(event.target.value);}});
   root.querySelector('[role=tablist]').addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setPane(event.key==='Home'?'script':event.key==='End'?'voice':pane==='script'?'voice':'script');$(`[data-pane="${pane}"]`).focus();}});
-  function loadVoices(){voices=canSpeak?synth.getVoices():[];renderVoice();}
-  if(canSpeak)synth.addEventListener('voiceschanged',loadVoices);
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing){stop();status('Playback paused while this tab is hidden.');}});
   window.addEventListener('pagehide',()=>stop());
-  render();loadVoices();
+  render();
 })();
